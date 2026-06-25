@@ -1,0 +1,65 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Runtime data and generated artifacts
+data/*.db
+data/*.sqlite
+data/*.jsonl
+data/*.jsonl.gz
+data/*.json
+data/*.csv
+data/*.xml
+data/raw/
+data/processed/
+!data/.gitkeep
+data/vectorstores/
+outputs/
+logs/
+*.log
+timings.csv
+page_debug_*.html
+reviews_*.csv
+
+# Tooling caches
+.pytest_cache/
+test_runtime/
+pytest_tmp/
+.pytest_tmp/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local-only documentation and private release-prep materials.
+SECURITY.md
+IMPLEMENTATION_FILES.md
+AGENTS.md
+docs/
+local_private_docs/
+revision_materials/
+
+# Internal evidence-prep utilities that are not part of the public implementation repository.
+evaluation/author_input_checklist.py
+tests/test_*evidence_package.py
+tests/test_gold_benchmark_and_dataset_stats.py
+
+# Manuscript/editorial/private files are intentionally not part of the implementation-only GitHub export.
+DecisionLetter.txt
+ReviewerComments.docx
+Rebuttal.docx
+ESWA-D-25-24971_R2.pdf
+LaTexSourceFiles/

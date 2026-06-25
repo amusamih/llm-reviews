@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sentences>
+  <sentence id="s1">
+    <text>The battery life is excellent but the delivery was slow.</text>
+    <Opinions>
+      <Opinion target="battery life" category="BATTERY#QUALITY" polarity="positive" from="4" to="16" />
+      <Opinion target="delivery" category="DELIVERY#SPEED" polarity="negative" from="42" to="50" />
+    </Opinions>
+  </sentence>
+  <sentence id="s2">
+    <text>The screen is acceptable.</text>
+    <Opinions>
+      <Opinion target="screen" category="SCREEN#QUALITY" polarity="neutral" from="4" to="10" />
+    </Opinions>
+  </sentence>
+</sentences>

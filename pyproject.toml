@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llm-review-analysis"
+version = "0.1.0"
+description = "Multi-agent multilingual product review analysis implementation"
+requires-python = ">=3.10"
+dependencies = [
+  "flask>=3.0",
+  "matplotlib>=3.8",
+  "openai>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+retrieval = [
+  "beautifulsoup4>=4.12",
+  "requests>=2.31",
+  "selenium>=4.20",
+]
+vector = [
+  "faiss-cpu>=1.8",
+]
+paper = [
+  "faiss-cpu>=1.8",
+  "langchain>=0.2",
+  "langchain-community>=0.2",
+  "langchain-openai>=0.1",
+  "langchain-text-splitters>=0.2",
+]
+model-substitution = [
+  "anthropic>=0.40",
+  "huggingface-hub>=0.24",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["llm_review_analysis*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -p no:cacheprovider"
+pythonpath = ["src", "."]

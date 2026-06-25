@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM Review Analysis</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f6f7f9; color: #20242a; }
+    main { max-width: 900px; margin: 0 auto; padding: 24px; }
+    #chat { min-height: 60vh; background: #fff; border: 1px solid #d7dce2; padding: 16px; overflow-y: auto; }
+    .msg { margin: 12px 0; padding: 10px 12px; border-radius: 6px; white-space: pre-wrap; }
+    .user { background: #dfefff; }
+    .bot { background: #eef2f5; }
+    form { display: flex; gap: 8px; margin-top: 12px; }
+    input { flex: 1; padding: 10px; font-size: 16px; }
+    button { padding: 10px 16px; font-size: 16px; }
+    img { max-width: 100%; margin-top: 10px; border: 1px solid #d7dce2; }
+  </style>
+</head>
+<body>
+  <main>
+    <div id="chat"></div>
+    <form id="form">
+      <input id="prompt" name="prompt" placeholder="Ask about reviews..." autocomplete="off">
+      <button type="submit">Send</button>
+    </form>
+  </main>
+  <script>
+    const chat = document.getElementById("chat");
+    const form = document.getElementById("form");
+    const promptInput = document.getElementById("prompt");
+    function addMessage(text, kind, imageBase64) {
+      const div = document.createElement("div");
+      div.className = `msg ${kind}`;
+      div.textContent = text;
+      if (imageBase64) {
+        const img = document.createElement("img");
+        img.alt = "Generated chart";
+        img.src = `data:image/png;base64,${imageBase64}`;
+        div.appendChild(img);
+      }
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const prompt = promptInput.value.trim();
+      if (!prompt) return;
+      addMessage(prompt, "user");
+      promptInput.value = "";
+      const response = await fetch("/chat", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({prompt})
+      });
+      const data = await response.json();
+      addMessage(data.explanation || data.message || "No response.", "bot", data.base64);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+[
+  {
+    "asin": "SAMPLE1",
+    "seller": "Example Seller",
+    "author": "A",
+    "rating": "5",
+    "title": "Great battery",
+    "date": "2025-07-01",
+    "country": "UAE",
+    "verified": "Verified Purchase",
+    "content": "Great product with excellent battery life."
+  },
+  {
+    "asin": "SAMPLE1",
+    "seller": "Example Seller",
+    "author": "B",
+    "rating": "2",
+    "title": "Poor delivery",
+    "date": "2025-07-02",
+    "country": "UAE",
+    "verified": "Verified Purchase",
+    "content": "The product was good but delivery was bad."
+  }
+]
