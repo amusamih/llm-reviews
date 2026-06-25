@@ -29,9 +29,7 @@ def test_live_baseline_ablation_resolves_only_approved_bounded_modes():
 
 
 def test_live_operation_estimate_marks_inapplicable_rows_and_embedding_operations():
-    prompts = load_gold_benchmark_prompts(
-        "outputs/programmatic_gold/amazon_all_beauty_20260624/programmatic_gold_prompts.json"
-    )
+    prompts = load_gold_benchmark_prompts("tests/fixtures/gold_benchmark_prompts.json")
     specs = resolve_live_modes(["proposed_multi_agent_live_gpt4o", "sql_only", "no_vector_retrieval"])
     estimate = estimate_live_operations(prompts, specs)
 

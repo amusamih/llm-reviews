@@ -103,6 +103,8 @@ No-call readiness checks can be run without sending benchmark prompts:
 python evaluation/live_model_substitution.py --preflight-check
 ```
 
+In a fresh checkout, this command may report that configured live runs are not ready until local `.env` values and local benchmark prompt/review artifacts are provided.
+
 ## Evaluation Scripts
 
 The benchmark runner supports offline/mock validation:
@@ -111,7 +113,7 @@ The benchmark runner supports offline/mock validation:
 python -m evaluation.run_benchmark --mode mock
 ```
 
-Dataset preparation utilities are available under `scripts/` and `evaluation/`. Raw downloaded datasets and generated SQLite databases are kept out of version control by default.
+Dataset preparation utilities are available under `scripts/` and `evaluation/`. Raw downloaded datasets, generated benchmark prompt/review artifacts, and generated SQLite databases are kept out of version control by default.
 
 Evaluation scripts may write local artifacts such as:
 
