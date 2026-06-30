@@ -46,12 +46,6 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Local workspace materials outside the public implementation package
-AGENTS.md
-docs/
-local_private_docs/
-revision_materials/
-
 # Internal evaluation utilities outside the public implementation package
 evaluation/author_input_checklist.py
 tests/test_*evidence_package.py
