@@ -32,6 +32,7 @@ paper = [
   "langchain-openai>=0.1",
   "langchain-text-splitters>=0.2",
 ]
+# Backward-compatible extra name for cross-model workflow provider dependencies.
 model-substitution = [
   "anthropic>=0.40",
   "huggingface-hub>=0.24",

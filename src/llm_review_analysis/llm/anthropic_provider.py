@@ -7,7 +7,7 @@ from .prompt_formatting import adapted_prompt, text_from_content_blocks
 
 
 class AnthropicLLMProvider:
-    """Anthropic Messages API adapter for model-substitution runs.
+    """Anthropic Messages API adapter for cross-model workflow runs.
 
     Construction is gated by ``ALLOW_LIVE_LLM`` and imports are lazy so the
     offline/test path does not require the Anthropic SDK.
@@ -29,7 +29,7 @@ class AnthropicLLMProvider:
             from anthropic import Anthropic
         except ImportError as exc:
             raise RuntimeError(
-                "Anthropic model-substitution mode requires the Anthropic SDK. "
+                "Anthropic cross-model workflow mode requires the Anthropic SDK. "
                 "Install with: python -m pip install -e \".[model-substitution]\""
             ) from exc
 

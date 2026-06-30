@@ -27,7 +27,7 @@ class HuggingFaceEndpointProvider:
             from huggingface_hub import InferenceClient
         except ImportError as exc:
             raise RuntimeError(
-                "Hugging Face model-substitution mode requires huggingface_hub. "
+                "Hugging Face cross-model workflow mode requires huggingface_hub. "
                 "Install with: python -m pip install -e \".[model-substitution]\""
             ) from exc
 

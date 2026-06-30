@@ -1,3 +1,11 @@
+"""Legacy/auxiliary live model comparison runner.
+
+This script is retained for backward compatibility with earlier bounded
+model-substitution artifacts. The manuscript-aligned cross-model workflow
+evaluation is implemented in ``evaluation/model_interface_robustness.py`` and
+uses the fixed 30-prompt configuration reported in the paper.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -208,7 +216,7 @@ def run_live_model_substitution(
         "model_comparison": model_comparison,
         "token_usage": token_summary,
         "latency_ms": latency_summary(result.latency_ms for result in results),
-        "phase_status": "prepared bounded live model-substitution sensitivity run; not a model leaderboard",
+        "phase_status": "prepared bounded live cross-model workflow run; not a model leaderboard",
         "limitations": _model_substitution_limitations(),
         "output_files": output_files,
         "stopped_early_reason": stopped_early_reason,
@@ -217,7 +225,7 @@ def run_live_model_substitution(
         "evidence_id": evidence_id,
         "run_id": run_id,
         "date_time_utc": datetime.now(timezone.utc).isoformat(),
-        "live_mock_status": "live model-substitution sensitivity run",
+        "live_mock_status": "live cross-model workflow run",
         "input_data": {
             "prompts_path": str(prompts_path),
             "reviews_path": str(reviews_path),
@@ -232,8 +240,8 @@ def run_live_model_substitution(
         "token_usage": token_summary,
         "evaluation_tags": list(BENCHMARK_EVALUATION_TAGS) + ["model-substitution"],
         "claim_boundary": (
-            "Model-substitution sensitivity evidence only. GPT-4o remains the primary implementation model; "
-            "additional models test portability/sensitivity of the same framework, not broad model superiority."
+            "Legacy cross-model workflow evidence only. GPT-4o remains the primary implementation model; "
+            "additional models test portability/sensitivity of the same workflow, not broad model superiority."
         ),
         "limitations": _model_substitution_limitations(),
     }
@@ -606,7 +614,7 @@ def _csv_value(value: Any) -> Any:
 
 def _fairness_rules() -> list[str]:
     return [
-        "Same framework architecture for all models.",
+        "Same workflow architecture for all models.",
         "Same prompts and gold answers.",
         "Same database and retrieved records.",
         "Same eligibility-aware metrics.",
@@ -624,8 +632,8 @@ def _fairness_rules() -> list[str]:
 
 def _model_substitution_limitations() -> list[str]:
     return [
-        "Model-substitution sensitivity analysis only; not a comprehensive model leaderboard.",
-        "GPT-4o remains the primary implementation model for the framework.",
+        "Legacy cross-model workflow analysis only; not a comprehensive model leaderboard.",
+        "GPT-4o remains the primary implementation model for the workflow.",
         "Run uses the same bounded programmatically verified prompt set unless a larger verified-gold set is approved.",
         "Token usage is recorded only when providers return usage metadata; otherwise fields remain null.",
         "Dollar cost remains null unless authoritative provider pricing is configured locally.",
@@ -634,7 +642,12 @@ def _model_substitution_limitations() -> list[str]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run or dry-check a bounded live model-substitution sensitivity benchmark.")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Run or dry-check the legacy bounded live model comparison script. "
+            "Use evaluation/model_interface_robustness.py for the manuscript-aligned 30-prompt cross-model workflow evaluation."
+        )
+    )
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS_PATH)
     parser.add_argument("--reviews", type=Path, default=DEFAULT_REVIEWS_PATH)
@@ -648,7 +661,7 @@ def main() -> None:
     parser.add_argument("--max-api-failures", type=int, default=3)
     parser.add_argument("--evidence-id", default=DEFAULT_EVIDENCE_ID)
     parser.add_argument("--dry-config-check", action="store_true", help="Validate model config/key presence without sending benchmark prompts.")
-    parser.add_argument("--preflight-check", action="store_true", help="Run the no-call model-substitution preflight readiness check.")
+    parser.add_argument("--preflight-check", action="store_true", help="Run the no-call legacy preflight readiness check.")
     args = parser.parse_args()
 
     if args.preflight_check:

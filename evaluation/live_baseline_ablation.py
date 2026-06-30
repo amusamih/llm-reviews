@@ -259,7 +259,7 @@ def run_live_baseline_ablation(
         "token_usage": token_summary,
         "evaluation_tags": list(BENCHMARK_EVALUATION_TAGS),
         "claim_boundary": (
-            "Small same-prompt live baseline/ablation comparison for framework components. "
+            "Small same-prompt live baseline/ablation comparison for workflow components. "
             "Not a full benchmark, not an alternative/open-source model comparison, not a user study, "
             "and not human-annotated ground truth."
         ),
@@ -516,7 +516,7 @@ LIVE_MODE_SPECS: dict[str, LiveModeSpec] = {
         mode=_mode_from(
             "proposed_multi_agent",
             name="proposed_multi_agent_live_gpt4o",
-            description="Paper-aligned live GPT-4o/LangChain/FAISS multi-agent framework.",
+            description="Paper-aligned live GPT-4o/LangChain/FAISS multi-agent workflow.",
         ),
         mode_execution_type="live_gpt4o_langchain_faiss_multi_agent",
         uses_live_gpt4o=True,
@@ -525,7 +525,7 @@ LIVE_MODE_SPECS: dict[str, LiveModeSpec] = {
         uses_mock_provider=False,
         uses_deterministic_logic=False,
         semantic_backend="faiss",
-        notes="Primary proposed-system condition; same framework as the main implementation.",
+        notes="Primary proposed-system condition; same workflow as the main implementation.",
     ),
     "rule_based_routing_baseline": LiveModeSpec(
         mode=BENCHMARK_MODES["rule_based_routing_baseline"],
@@ -630,7 +630,7 @@ def _baseline_ablation_limitations() -> list[str]:
     return [
         "Small 11-prompt programmatically verified benchmark only; not a full benchmark.",
         "Gold items are programmatically verified from local data, not human/adjudicated annotations.",
-        "Some baselines and ablations intentionally use deterministic or hybrid logic to isolate framework components.",
+        "Some baselines and ablations intentionally use deterministic or hybrid logic to isolate workflow components.",
         "Single-agent GPT-4o/RAG and alternative/open-source model comparisons remain deferred/future work.",
         "No user study, no inter-annotator agreement, and no human translation-quality evaluation are claimed.",
         "Dollar cost is not computed without authoritative current pricing configured in the repository.",

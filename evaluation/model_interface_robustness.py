@@ -46,7 +46,7 @@ DEFAULT_REVIEWS_PATH = PROJECT_ROOT / "outputs" / "programmatic_gold" / "amazon_
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "outputs" / "benchmarks"
 DEFAULT_PRODUCT_NAME = "amazon all beauty"
 DEFAULT_DATASET_NAME = "amazon_all_beauty_250_programmatic_artifact"
-DEFAULT_PREFLIGHT_MODELS = ("gpt4o", "claude")
+DEFAULT_PREFLIGHT_MODELS = ("gpt4o", "claude", "llama", "qwen")
 DEFAULT_AGENT_SCOPES = ("full",)
 MODEL_ALIASES = {
     "gpt4o": "gpt4o_primary",
@@ -1190,7 +1190,7 @@ def _markdown_report(
         "",
         "## Limitations",
         "",
-        "- This is a bounded sensitivity and interface-robustness analysis over a controlled 250-review artifact.",
+        "- This is a bounded cross-model workflow evaluation over a controlled 250-review artifact.",
         "- The prompt set is broader than the earlier pilot but remains small and task-oriented.",
         "- Programmatic checks validate workflow behavior and structured outputs; they are not a substitute for human evaluation of nuanced answer quality.",
         "- Local endpoint availability, provider API behavior, and token metadata can vary by deployment.",
@@ -1214,7 +1214,7 @@ def _interpretation(
     routing_rate = _bool_rate(row.get("routing_correct") for row in rows)
     return (
         f"Across the available execution rows, task success was {success_rate} and routing correctness was {routing_rate}. "
-        "These values should be read as workflow/interface sensitivity indicators for the selected configurations, not as broad comparative model quality claims."
+        "These values should be read as workflow sensitivity indicators for the selected configurations, not as broad comparative model quality claims."
     )
 
 
@@ -1259,7 +1259,7 @@ def _manifest(
 
 def _claim_boundary() -> str:
     return (
-        "Model-substitution and interface-robustness sensitivity analysis only; "
+        "Cross-model workflow evaluation only; "
         "not a model leaderboard, not a full LLM benchmark, and not proof of model agnosticism."
     )
 
@@ -1861,13 +1861,18 @@ def _print_local_model_instructions(model_labels: Sequence[str]) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Model-substitution and interface-robustness evaluation runner.")
+    parser = argparse.ArgumentParser(description="Cross-model workflow evaluation runner.")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS_PATH)
     parser.add_argument("--reviews", type=Path, default=DEFAULT_REVIEWS_PATH)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--run-id", default=None)
-    parser.add_argument("--models", nargs="*", default=None, help="Model aliases: gpt4o, claude, llama, qwen.")
+    parser.add_argument(
+        "--models",
+        nargs="*",
+        default=None,
+        help="Model aliases. Defaults to the manuscript-aligned set: gpt4o, claude, llama, qwen.",
+    )
     parser.add_argument("--agent-scopes", nargs="*", default=list(DEFAULT_AGENT_SCOPES), help="Scopes: full, orchestrator, semantics, analytics, all.")
     parser.add_argument("--semantic-backend", default="faiss", choices=("faiss", "lexical"))
     parser.add_argument("--max-prompts", type=int, default=None)

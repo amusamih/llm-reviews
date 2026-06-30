@@ -102,6 +102,7 @@ def test_retrieval_enrichment_stores_provider_backed_semantic_tags(settings) -> 
 
 
 def test_faiss_semantic_reasoning_retrieves_evidence_with_local_embeddings(settings) -> None:
+    pytest.importorskip("faiss")
     provider = RecordingProvider({"semantic_reasoning": "The retrieved review says the battery lasts all day."})
     conn = sqlite3.connect(settings.database_path)
     conn.row_factory = sqlite3.Row
@@ -300,6 +301,7 @@ def test_faiss_cache_uses_no_unsafe_deserialization_path() -> None:
 
 
 def test_faiss_semantic_reasoning_returns_controlled_response_when_no_evidence(settings) -> None:
+    pytest.importorskip("faiss")
     provider = RecordingProvider({"semantic_reasoning": "This should not be called."})
     conn = sqlite3.connect(settings.database_path)
     conn.row_factory = sqlite3.Row

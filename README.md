@@ -1,8 +1,8 @@
-# A Multi-Agent LLM Framework for Multilingual Product Review Analysis
+# A Multi-Agent LLM System for Multilingual Product Review Analysis
 
 ## Overview
 
-This repository contains a Python implementation of a multi-agent LLM framework for product-review analysis. It combines SQLite-backed review data, multilingual prompt handling, route selection, semantic retrieval, structured analytics, chart generation, and optional live LLM providers behind safe offline defaults.
+This repository contains a Python implementation of a multi-agent LLM system for product-review analysis. It combines SQLite-backed review data, multilingual prompt handling, route selection, semantic retrieval, structured analytics, chart generation, and optional live LLM providers behind safe offline defaults.
 
 The default configuration uses mock/offline behavior. Live API calls are disabled unless explicitly enabled in a local `.env` file for a specific run.
 
@@ -39,6 +39,7 @@ python -m pip install -e ".[model-substitution]"
 ```
 
 The `paper` extra installs LangChain, LangChain OpenAI, and FAISS dependencies used by the provider-backed LLM and semantic retrieval paths. The default offline tests do not require API keys.
+The `model-substitution` extra name is retained for backward compatibility and installs provider dependencies used by the cross-model workflow evaluation.
 
 ## Configuration
 
@@ -82,7 +83,7 @@ Targeted workflow and safeguard checks:
 python -m pytest tests/test_orchestrator_query_time_flow.py tests/test_retrieval_enrichment_pipeline.py tests/test_reviewer_response_safeguards.py tests/test_semantic_tagging_and_reasoning.py
 ```
 
-Targeted SQL, analytics, and framework checks:
+Targeted SQL, analytics, and implementation-alignment checks:
 
 ```bash
 python -m pytest tests/test_analytics_security.py tests/test_sql_validator.py tests/test_framework_alignment.py
@@ -105,13 +106,17 @@ Configured provider paths include:
 - Llama-3.3-70B-Instruct-compatible GGUF endpoint through Hugging Face Inference Endpoints.
 - Qwen2.5-72B-Instruct endpoint through Hugging Face Inference Endpoints.
 
-No-call readiness checks can be run without sending benchmark prompts:
+The manuscript-aligned cross-model workflow evaluation uses GPT-4o, Claude Sonnet, Llama-3.3-70B-Instruct, and Qwen2.5-72B-Instruct over the fixed 30-prompt set. No-call readiness checks can be run without sending benchmark prompts:
 
 ```bash
 python evaluation/model_interface_robustness.py --config evaluation/model_configs.json --prompts evaluation/interface_robustness_prompts.json --preflight
 ```
 
-In a fresh checkout, this command may report that configured live runs are not ready until local `.env` values and local benchmark prompt/review artifacts are provided.
+The default preflight checks the four manuscript-aligned model configurations and may report that configured live runs are not ready until local `.env` values, endpoint URLs, and local benchmark prompt/review artifacts are provided. To run a smaller no-call availability check, pass an explicit subset:
+
+```bash
+python evaluation/model_interface_robustness.py --config evaluation/model_configs.json --prompts evaluation/interface_robustness_prompts.json --preflight --models gpt4o claude
+```
 
 ## Evaluation Scripts
 
@@ -134,6 +139,8 @@ evaluation/interface_robustness_prompts.json
 ```
 
 Dataset preparation utilities are available under `scripts/` and `evaluation/`. Raw downloaded datasets, generated benchmark prompt/review artifacts, and generated SQLite databases are kept out of version control by default.
+
+The public repository does not redistribute third-party platform reviews or the canonical local case-study database used for the manuscript's controlled quantitative results. Exact manuscript quantitative reproduction requires the corresponding local case-study data/artifacts or regenerated local data consistent with the documented schema. The code supports inspection, re-execution, and adaptation, but exact LLM-generated outputs may vary with model availability, version updates, API behavior, and runtime conditions.
 
 Evaluation scripts may write local artifacts such as:
 
