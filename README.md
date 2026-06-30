@@ -1,4 +1,4 @@
-# A Multi-Agent LLM System for Multilingual Product Review Analysis
+# An LLM-Based Multi-Agent System for Multilingual Product Review Analysis
 
 ## Overview
 
