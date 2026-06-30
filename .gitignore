@@ -46,22 +46,13 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Local-only documentation and private release-prep materials.
-SECURITY.md
-IMPLEMENTATION_FILES.md
+# Local workspace materials outside the public implementation package
 AGENTS.md
 docs/
 local_private_docs/
 revision_materials/
 
-# Internal evidence-prep utilities that are not part of the public implementation repository.
+# Internal evaluation utilities outside the public implementation package
 evaluation/author_input_checklist.py
 tests/test_*evidence_package.py
 tests/test_gold_benchmark_and_dataset_stats.py
-
-# Manuscript/editorial/private files are intentionally not part of the implementation-only GitHub export.
-DecisionLetter.txt
-ReviewerComments.docx
-Rebuttal.docx
-ESWA-D-25-24971_R2.pdf
-LaTexSourceFiles/
