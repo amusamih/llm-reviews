@@ -25,7 +25,6 @@ from evaluation.failure_examples import collect_failure_examples
 from evaluation.live_pilot import (
     DEFAULT_MODEL,
     DEFAULT_OUTPUT_DIR,
-    DEFAULT_PROMPTS_PATH,
     DEFAULT_PROVIDER,
     DEFAULT_REVIEWS_PATH,
     UsageTrackingProvider,
@@ -54,6 +53,7 @@ from llm_review_analysis.providers import build_llm_provider
 
 DEFAULT_EVIDENCE_ID = "EVID-LIVE-BASELINE-ABLATION-001"
 DEFAULT_RUN_ID_PREFIX = "live_baseline_ablation"
+DEFAULT_PROMPTS_PATH = PROJECT_ROOT / "evaluation" / "alternative_workflow_prompts.json"
 DEFAULT_MODE_NAMES = (
     "proposed_multi_agent_live_gpt4o",
     "rule_based_routing_baseline",

@@ -17,9 +17,10 @@ def test_unknown_product_does_not_fall_back_to_available_table(settings, provide
     result, trace = orchestrator.answer_with_trace(conn, "How many reviews for unknown gadget?")
 
     assert result["type"] == "text"
-    assert "0 reviews" in result["message"]
+    assert "retrieval or enrichment could not be completed" in result["message"].lower()
     assert trace["table"] is None
-    assert trace["failure_category"] == "product_not_found"
+    assert trace["retrieval_attempted"] is True
+    assert trace["failure_category"] == "retrieval_failed"
 
 
 def test_ambiguous_prompt_returns_controlled_clarification(settings, provider, sample_db):

@@ -1,0 +1,525 @@
+[
+  {
+    "ambiguity_flag": false,
+    "category": "direct_sql_factual",
+    "contradiction_flag": false,
+    "expected_answer_facts": [
+      "250 reviews"
+    ],
+    "expected_chart_grouping": null,
+    "expected_chart_type": null,
+    "expected_chart_values": {},
+    "expected_date_range": null,
+    "expected_evidence_snippets": [],
+    "expected_failure_type": null,
+    "expected_product_table": "amazon_all_beauty",
+    "expected_result_type": "text",
+    "expected_route": "DIRECT_SQL",
+    "expected_source_review_ids": [],
+    "expected_sql": "SELECT COUNT(*) AS review_count FROM amazon_all_beauty",
+    "expected_sql_pattern": "SELECT\\s+COUNT\\(\\*\\)\\s+AS\\s+review_count\\s+FROM\\s+amazon_all_beauty",
+    "gold_computation_method": "sqlite_count",
+    "gold_notes": "Expected value was computed programmatically from local repository data; no manual author verification claimed.",
+    "gold_source_query": "SELECT COUNT(*) AS review_count FROM amazon_all_beauty_balanced_seeded",
+    "gold_source_records": [
+      {
+        "row_count": 250
+      }
+    ],
+    "gold_verification_status": "programmatically_verified",
+    "gold_verified_by": null,
+    "language": "en",
+    "missing_information_flag": false,
+    "multiturn_context": false,
+    "product": "amazon all beauty",
+    "prompt_id": "PGOLD-SQL-COUNT-001",
+    "prompt_text": "How many reviews for amazon all beauty?",
+    "reviewer_issue_ids": [
+      "R4-07",
+      "R4-10",
+      "R4-M10"
+    ],
+    "success_criteria": [
+      "route is DIRECT_SQL",
+      "count comes from local SQLite rows"
+    ]
+  },
+  {
+    "ambiguity_flag": false,
+    "category": "direct_sql_factual",
+    "contradiction_flag": false,
+    "expected_answer_facts": [
+      "3.00"
+    ],
+    "expected_chart_grouping": null,
+    "expected_chart_type": null,
+    "expected_chart_values": {},
+    "expected_date_range": null,
+    "expected_evidence_snippets": [],
+    "expected_failure_type": null,
+    "expected_product_table": "amazon_all_beauty",
+    "expected_result_type": "text",
+    "expected_route": "DIRECT_SQL",
+    "expected_source_review_ids": [],
+    "expected_sql": "SELECT AVG(CAST(rating AS REAL)) AS avg_rating FROM amazon_all_beauty",
+    "expected_sql_pattern": "AVG\\((?:CAST\\(rating\\s+AS\\s+REAL\\)|rating)\\)",
+    "gold_computation_method": "sqlite_avg_rating",
+    "gold_notes": "Expected value was computed programmatically from local repository data; no manual author verification claimed.",
+    "gold_source_query": "SELECT AVG(CAST(rating AS REAL)) AS avg_rating FROM amazon_all_beauty_balanced_seeded",
+    "gold_source_records": [
+      {
+        "avg_rating": 3.0
+      }
+    ],
+    "gold_verification_status": "programmatically_verified",
+    "gold_verified_by": null,
+    "language": "en",
+    "missing_information_flag": false,
+    "multiturn_context": false,
+    "product": "amazon all beauty",
+    "prompt_id": "PGOLD-SQL-AVG-001",
+    "prompt_text": "What is the average rating for amazon all beauty?",
+    "reviewer_issue_ids": [
+      "R4-07",
+      "R4-10",
+      "R4-M10"
+    ],
+    "success_criteria": [
+      "route is DIRECT_SQL",
+      "average comes from local SQLite rows"
+    ]
+  },
+  {
+    "ambiguity_flag": false,
+    "category": "date_range_extraction",
+    "contradiction_flag": false,
+    "expected_answer_facts": [
+      "3.00"
+    ],
+    "expected_chart_grouping": null,
+    "expected_chart_type": null,
+    "expected_chart_values": {},
+    "expected_date_range": "2014-09-27..2023-02-15",
+    "expected_evidence_snippets": [],
+    "expected_failure_type": null,
+    "expected_product_table": "amazon_all_beauty",
+    "expected_result_type": "text",
+    "expected_route": "DIRECT_SQL",
+    "expected_source_review_ids": [],
+    "expected_sql": "SELECT AVG(CAST(rating AS REAL)) AS avg_rating FROM amazon_all_beauty WHERE date >= '2014-09-27' AND date <= '2023-02-15'",
+    "expected_sql_pattern": "WHERE\\s+(?:date\\s+BETWEEN\\s+'[0-9]{4}-[0-9]{2}-[0-9]{2}'\\s+AND\\s+'[0-9]{4}-[0-9]{2}-[0-9]{2}'|date\\s+>=\\s+'[0-9]{4}-[0-9]{2}-[0-9]{2}'\\s+AND\\s+date\\s+<=)",
+    "gold_computation_method": "sqlite_date_range_avg_rating",
+    "gold_notes": "Expected value was computed programmatically from local repository data; no manual author verification claimed.",
+    "gold_source_query": "SELECT AVG(CAST(rating AS REAL)) AS avg_rating FROM amazon_all_beauty_balanced_seeded WHERE date >= '2014-09-27' AND date <= '2023-02-15'",
+    "gold_source_records": [
+      {
+        "avg_rating": 3.0,
+        "end_date": "2023-02-15",
+        "start_date": "2014-09-27"
+      }
+    ],
+    "gold_verification_status": "programmatically_verified",
+    "gold_verified_by": null,
+    "language": "en",
+    "missing_information_flag": false,
+    "multiturn_context": false,
+    "product": "amazon all beauty",
+    "prompt_id": "PGOLD-SQL-DATE-RANGE-001",
+    "prompt_text": "What is the average rating for amazon all beauty from 2014-09-27 to 2023-02-15?",
+    "reviewer_issue_ids": [
+      "R4-07",
+      "R4-10",
+      "R4-M10"
+    ],
+    "success_criteria": [
+      "date range is extracted",
+      "average is computed over the selected date range"
+    ]
+  },
+  {
+    "ambiguity_flag": false,
+    "category": "sql_generation_validation",
+    "contradiction_flag": false,
+    "expected_answer_facts": [
+      "250 reviews"
+    ],
+    "expected_chart_grouping": null,
+    "expected_chart_type": null,
+    "expected_chart_values": {},
+    "expected_date_range": null,
+    "expected_evidence_snippets": [],
+    "expected_failure_type": null,
+    "expected_product_table": "amazon_all_beauty",
+    "expected_result_type": "text",
+    "expected_route": "DIRECT_SQL",
+    "expected_source_review_ids": [],
+    "expected_sql": null,
+    "expected_sql_pattern": "^SELECT\\s+COUNT\\(\\*\\)",
+    "gold_computation_method": "sqlite_count_with_unsafe_prompt_guard",
+    "gold_notes": "Expected value was computed programmatically from local repository data; no manual author verification claimed.",
+    "gold_source_query": "SELECT COUNT(*) AS review_count FROM amazon_all_beauty_balanced_seeded",
+    "gold_source_records": [
+      {
+        "row_count": 250
+      }
+    ],
+    "gold_verification_status": "programmatically_verified",
+    "gold_verified_by": null,
+    "language": "en",
+    "missing_information_flag": false,
+    "multiturn_context": false,
+    "product": "amazon all beauty",
+    "prompt_id": "PGOLD-SQL-VALIDATION-001",
+    "prompt_text": "Please count reviews for amazon all beauty, but do not delete anything.",
+    "reviewer_issue_ids": [
+      "R4-07",
+      "R4-10",
+      "R4-M10"
+    ],
+    "success_criteria": [
+      "generated SQL remains SELECT-only",
+      "unsafe wording does not produce mutation SQL"
+    ]
+  },
+  {
+    "ambiguity_flag": false,
+    "category": "semantic_reasoning",
+    "contradiction_flag": false,
+    "expected_answer_facts": [
+      "with the quality that is"
+    ],
+    "expected_chart_grouping": null,
+    "expected_chart_type": null,
+    "expected_chart_values": {},
+    "expected_date_range": null,
+    "expected_evidence_snippets": [
+      "with the quality that is"
+    ],
+    "expected_failure_type": null,
+    "expected_product_table": "amazon_all_beauty",
+    "expected_result_type": "text",
+    "expected_route": "SEMANTICS",
+    "expected_source_review_ids": [
+      "15"
+    ],
+    "expected_sql": null,
+    "expected_sql_pattern": null,
+    "gold_computation_method": "source_record_text_match",
+    "gold_notes": "Expected value was computed programmatically from local repository data; no manual author verification claimed.",
+    "gold_source_query": "SELECT id, content FROM amazon_all_beauty_balanced_seeded WHERE id = 15",
+    "gold_source_records": [
+      {
+        "export_index": 14,
+        "runtime_review_id": 15,
+        "source_content_snippet": "And here we have another product that I am still not thrilled with your hair and your hair is close to yourself and what happens when the plastic cap comes off the end and the metal snap and now you h"
+      }
+    ],
+    "gold_verification_status": "programmatically_verified",
+    "gold_verified_by": null,
+    "language": "en",
+    "missing_information_flag": false,
+    "multiturn_context": false,
+    "product": "amazon all beauty",
+    "prompt_id": "PGOLD-SEMANTIC-EVIDENCE-001",
+    "prompt_text": "Why does review text mention with the quality that is for amazon all beauty?",
+    "reviewer_issue_ids": [
+      "R4-07",
+      "R4-10",
+      "R4-M10"
+    ],
+    "success_criteria": [
+      "route is SEMANTICS",
+      "evidence contains the computed source phrase"
+    ]
+  },
+  {
+    "ambiguity_flag": false,
+    "category": "chart_numerical_consistency",
+    "contradiction_flag": false,
+    "expected_answer_facts": [
+      "bar chart"
+    ],
+    "expected_chart_grouping": "rating",
+    "expected_chart_type": "bar",
+    "expected_chart_values": {
+      "1.0": 50.0,
+      "2.0": 50.0,
+      "3.0": 50.0,
+      "4.0": 50.0,
+      "5.0": 50.0
+    },
+    "expected_date_range": null,
+    "expected_evidence_snippets": [],
+    "expected_failure_type": null,
+    "expected_product_table": "amazon_all_beauty",
+    "expected_result_type": "chart",
+    "expected_route": "ANALYTICS",
+    "expected_source_review_ids": [],
+    "expected_sql": null,
+    "expected_sql_pattern": null,
+    "gold_computation_method": "sqlite_group_by_rating",
+    "gold_notes": "Expected value was computed programmatically from local repository data; no manual author verification claimed.",
+    "gold_source_query": "SELECT rating, COUNT(*) AS value FROM amazon_all_beauty_balanced_seeded GROUP BY rating ORDER BY rating",
+    "gold_source_records": [
+      {
+        "count": 50,
+        "rating": "1.0"
+      },
+      {
+        "count": 50,
+        "rating": "2.0"
+      },
+      {
+        "count": 50,
+        "rating": "3.0"
+      },
+      {
+        "count": 50,
+        "rating": "4.0"
+      },
+      {
+        "count": 50,
+        "rating": "5.0"
+      }
+    ],
+    "gold_verification_status": "programmatically_verified",
+    "gold_verified_by": null,
+    "language": "en",
+    "missing_information_flag": false,
+    "multiturn_context": false,
+    "product": "amazon all beauty",
+    "prompt_id": "PGOLD-CHART-RATING-001",
+    "prompt_text": "Show the rating distribution for amazon all beauty",
+    "reviewer_issue_ids": [
+      "R4-07",
+      "R4-10",
+      "R4-M10"
+    ],
+    "success_criteria": [
+      "chart type is bar",
+      "chart groups by rating",
+      "chart values equal SQLite rating counts"
+    ]
+  },
+  {
+    "ambiguity_flag": true,
+    "category": "ambiguous_prompt",
+    "contradiction_flag": false,
+    "expected_answer_facts": [],
+    "expected_chart_grouping": null,
+    "expected_chart_type": null,
+    "expected_chart_values": {},
+    "expected_date_range": null,
+    "expected_evidence_snippets": [],
+    "expected_failure_type": "ambiguous_prompt",
+    "expected_product_table": "amazon_all_beauty",
+    "expected_result_type": "text",
+    "expected_route": "SEMANTICS",
+    "expected_source_review_ids": [],
+    "expected_sql": null,
+    "expected_sql_pattern": null,
+    "gold_computation_method": "programmatic_expected_failure",
+    "gold_notes": "Expected value was computed programmatically from local repository data; no manual author verification claimed.",
+    "gold_source_query": "not_applicable",
+    "gold_source_records": [
+      {
+        "expected_failure_type": "ambiguous_prompt"
+      }
+    ],
+    "gold_verification_status": "programmatically_verified",
+    "gold_verified_by": null,
+    "language": "en",
+    "missing_information_flag": false,
+    "multiturn_context": false,
+    "product": "amazon all beauty",
+    "prompt_id": "PGOLD-AMBIGUOUS-001",
+    "prompt_text": "Tell me about amazon all beauty.",
+    "reviewer_issue_ids": [
+      "R4-07",
+      "R4-10",
+      "R4-M10"
+    ],
+    "success_criteria": [
+      "ambiguous prompt is recorded as a controlled failure or limitation"
+    ]
+  },
+  {
+    "ambiguity_flag": false,
+    "category": "missing_information",
+    "contradiction_flag": false,
+    "expected_answer_facts": [],
+    "expected_chart_grouping": null,
+    "expected_chart_type": null,
+    "expected_chart_values": {},
+    "expected_date_range": null,
+    "expected_evidence_snippets": [
+      "warranty"
+    ],
+    "expected_failure_type": "missing_information",
+    "expected_product_table": "amazon_all_beauty",
+    "expected_result_type": "text",
+    "expected_route": "SEMANTICS",
+    "expected_source_review_ids": [],
+    "expected_sql": null,
+    "expected_sql_pattern": null,
+    "gold_computation_method": "programmatic_absence_check",
+    "gold_notes": "Expected value was computed programmatically from local repository data; no manual author verification claimed.",
+    "gold_source_query": "SELECT COUNT(*) AS warranty_mentions FROM amazon_all_beauty_balanced_seeded WHERE lower(content) LIKE '%warranty%'",
+    "gold_source_records": [
+      {
+        "warranty_mentions": 0
+      }
+    ],
+    "gold_verification_status": "programmatically_verified",
+    "gold_verified_by": null,
+    "language": "en",
+    "missing_information_flag": true,
+    "multiturn_context": false,
+    "product": "amazon all beauty",
+    "prompt_id": "PGOLD-MISSING-INFO-001",
+    "prompt_text": "Why is the warranty score low for amazon all beauty?",
+    "reviewer_issue_ids": [
+      "R4-07",
+      "R4-10",
+      "R4-M10"
+    ],
+    "success_criteria": [
+      "system should not hallucinate missing warranty evidence"
+    ]
+  },
+  {
+    "ambiguity_flag": false,
+    "category": "failure_case",
+    "contradiction_flag": false,
+    "expected_answer_facts": [
+      "0 reviews"
+    ],
+    "expected_chart_grouping": null,
+    "expected_chart_type": null,
+    "expected_chart_values": {},
+    "expected_date_range": null,
+    "expected_evidence_snippets": [],
+    "expected_failure_type": "product_not_found",
+    "expected_product_table": "unknown_evaluation_gadget",
+    "expected_result_type": "text",
+    "expected_route": "DIRECT_SQL",
+    "expected_source_review_ids": [],
+    "expected_sql": null,
+    "expected_sql_pattern": "SELECT",
+    "gold_computation_method": "programmatic_expected_failure",
+    "gold_notes": "Expected value was computed programmatically from local repository data; no manual author verification claimed.",
+    "gold_source_query": "not_applicable",
+    "gold_source_records": [
+      {
+        "available_table": "amazon_all_beauty",
+        "requested_table": "unknown_evaluation_gadget"
+      }
+    ],
+    "gold_verification_status": "programmatically_verified",
+    "gold_verified_by": null,
+    "language": "en",
+    "missing_information_flag": false,
+    "multiturn_context": false,
+    "product": "unknown evaluation gadget",
+    "prompt_id": "PGOLD-FAILURE-UNKNOWN-PRODUCT-001",
+    "prompt_text": "How many reviews for unknown evaluation gadget?",
+    "reviewer_issue_ids": [
+      "R4-07",
+      "R4-10",
+      "R4-M10"
+    ],
+    "success_criteria": [
+      "unknown product is not silently treated as the selected product"
+    ]
+  },
+  {
+    "ambiguity_flag": false,
+    "category": "failure_case",
+    "contradiction_flag": false,
+    "expected_answer_facts": [],
+    "expected_chart_grouping": "date",
+    "expected_chart_type": "scatter",
+    "expected_chart_values": {},
+    "expected_date_range": null,
+    "expected_evidence_snippets": [],
+    "expected_failure_type": "unsupported_chart_type",
+    "expected_product_table": "amazon_all_beauty",
+    "expected_result_type": "chart",
+    "expected_route": "ANALYTICS",
+    "expected_source_review_ids": [],
+    "expected_sql": null,
+    "expected_sql_pattern": null,
+    "gold_computation_method": "programmatic_expected_failure",
+    "gold_notes": "Expected value was computed programmatically from local repository data; no manual author verification claimed.",
+    "gold_source_query": "not_applicable",
+    "gold_source_records": [
+      {
+        "supported_chart_types": [
+          "bar",
+          "line",
+          "pie"
+        ]
+      }
+    ],
+    "gold_verification_status": "programmatically_verified",
+    "gold_verified_by": null,
+    "language": "en",
+    "missing_information_flag": false,
+    "multiturn_context": false,
+    "product": "amazon all beauty",
+    "prompt_id": "PGOLD-FAILURE-CHART-SCATTER-001",
+    "prompt_text": "Show a scatter plot of rating by date for amazon all beauty",
+    "reviewer_issue_ids": [
+      "R4-07",
+      "R4-10",
+      "R4-M10"
+    ],
+    "success_criteria": [
+      "unsupported chart request is recorded as a controlled failure"
+    ]
+  },
+  {
+    "ambiguity_flag": false,
+    "category": "translation_unsupported",
+    "contradiction_flag": false,
+    "expected_answer_facts": [],
+    "expected_chart_grouping": null,
+    "expected_chart_type": null,
+    "expected_chart_values": {},
+    "expected_date_range": null,
+    "expected_evidence_snippets": [
+      "reference translation"
+    ],
+    "expected_failure_type": "translation_quality_not_evaluated",
+    "expected_product_table": "amazon_all_beauty",
+    "expected_result_type": "text",
+    "expected_route": "SEMANTICS",
+    "expected_source_review_ids": [],
+    "expected_sql": null,
+    "expected_sql_pattern": null,
+    "gold_computation_method": "programmatic_absence_check",
+    "gold_notes": "Expected value was computed programmatically from local repository data; no manual author verification claimed.",
+    "gold_source_query": "not_applicable_no_reference_translation_field_available",
+    "gold_source_records": [
+      {
+        "reference_translation_rows": 0
+      }
+    ],
+    "gold_verification_status": "programmatically_verified",
+    "gold_verified_by": null,
+    "language": "en",
+    "missing_information_flag": false,
+    "multiturn_context": false,
+    "product": "amazon all beauty",
+    "prompt_id": "PGOLD-TRANSLATION-UNSUPPORTED-001",
+    "prompt_text": "Evaluate translation quality for amazon all beauty reviews.",
+    "reviewer_issue_ids": [
+      "R4-07",
+      "R4-10",
+      "R4-M10"
+    ],
+    "success_criteria": [
+      "translation-quality request is recorded as unsupported without reference translations"
+    ]
+  }
+]

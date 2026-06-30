@@ -20,6 +20,14 @@ class LanguageAgent:
         translation = _extract_line(response, "TRANSLATION") or text
         return language.strip(), translation.strip()
 
+    def translate_text(self, text: str, target_language: str) -> str:
+        response = self.provider.generate(
+            _translate_prompt(text, target_language),
+            purpose="translation",
+        ).content.strip()
+        translation = _extract_line(response, "TRANSLATION") or response
+        return translation.strip() or text
+
     def enrich_table(self, conn: sqlite3.Connection, table_name: str) -> int:
         table = validate_identifier(table_name)
         rows = conn.execute(f"SELECT id, title, content FROM {table}").fetchall()
@@ -43,6 +51,15 @@ def _language_prompt(text: str) -> str:
         "LANGUAGE: <iso-code>\n"
         "TRANSLATION: <English text, omit if already English>\n"
         f"Review:\n{text}"
+    )
+
+
+def _translate_prompt(text: str, target_language: str) -> str:
+    return (
+        f"Translate the following text to {target_language}.\n"
+        "Return one line in this exact format:\n"
+        "TRANSLATION: <translated text>\n"
+        f"Text:\n{text}"
     )
 
 

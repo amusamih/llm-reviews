@@ -4,7 +4,7 @@ from .analytics_agent import AnalyticsAgent
 from .langchain_tools import build_langchain_tools, expected_langchain_tool_names
 from .language_agent import LanguageAgent
 from .orchestrator import ReviewOrchestrator
-from .retrieval_agent import RetrievalAgent
+from .retrieval_agent import RetrievalAgent, RetrievalError
 from .semantic_reasoning_agent import SemanticReasoningAgent
 from .semantic_tagger import SemanticTagger
 from .topic_assignment_agent import TopicAssignmentAgent
@@ -15,6 +15,7 @@ __all__ = [
     "expected_langchain_tool_names",
     "LanguageAgent",
     "RetrievalAgent",
+    "RetrievalError",
     "ReviewOrchestrator",
     "SemanticReasoningAgent",
     "SemanticTagger",

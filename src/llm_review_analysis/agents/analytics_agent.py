@@ -33,6 +33,17 @@ class AnalyticsAgent:
                 "failure_category": "unsupported_chart_type",
                 "failure_reason": f"Requested chart type is not supported: {unsupported_chart}.",
             }
+        if _is_underspecified_analytics_request(prompt):
+            return {
+                "type": "text",
+                "message": (
+                    "The analytics request is underspecified. Please specify the field, grouping, "
+                    "or aggregation to visualize, such as rating distribution, average rating by date, "
+                    "or review counts by country."
+                ),
+                "failure_category": "ambiguous_analytics_request",
+                "failure_reason": "No supported analytics field, grouping, or aggregation was specified.",
+            }
         spec = self._build_spec(prompt)
         sql = build_aggregate_sql(table, spec)
         _, rows = execute_validated_select(conn, sql, allowed_tables=[table], allowed_columns=REVIEW_COLUMNS)
@@ -249,6 +260,39 @@ def _requested_unsupported_chart_type(prompt: str) -> str | None:
         if re.search(rf"\b{re.escape(term)}\b", lower) and term not in CHART_TYPES:
             return term
     return None
+
+
+def _is_underspecified_analytics_request(prompt: str) -> bool:
+    lower = prompt.lower()
+    if not any(term in lower for term in ("chart", "plot", "visual", "visualize", "graph")):
+        return False
+    scope_terms = (
+        "average",
+        "avg",
+        "breakdown",
+        "count",
+        "counts",
+        "countries",
+        "country",
+        "date",
+        "distribution",
+        "language",
+        "languages",
+        "mean",
+        "percentage",
+        "percent",
+        "proportion",
+        "rating",
+        "ratings",
+        "semantic",
+        "sentiment",
+        "share",
+        "topic",
+        "topics",
+        "trend",
+        "verified",
+    )
+    return not any(term in lower for term in scope_terms)
 
 
 def _mentions_rating_distribution(prompt_lower: str) -> bool:

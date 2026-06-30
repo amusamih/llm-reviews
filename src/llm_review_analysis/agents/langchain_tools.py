@@ -54,8 +54,8 @@ def build_langchain_tools(
     semantics = SemanticReasoningAgent(settings=settings, provider=provider, backend=settings.semantic_retrieval_backend)
     language = LanguageAgent(provider)
     topics = TopicAssignmentAgent(provider)
-    tagger = SemanticTagger()
-    retrieval = RetrievalAgent(settings)
+    tagger = SemanticTagger(provider=provider, use_provider=True)
+    retrieval = RetrievalAgent(settings, provider=provider)
 
     def route_prompt(question: str) -> str:
         return review_orchestrator.route(question)

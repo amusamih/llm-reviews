@@ -17,7 +17,7 @@ def test_dataset_stats(sample_db, settings):
     assert stats["verified_distribution"]["Verified Purchase"] == 2
     assert stats["content_length_words"]["count"] == 2
     assert stats["date_range"]["min"] == "2025-07-01"
-    assert stats["missing_counts"]["language"] == 2
+    assert stats["missing_counts"]["language"] == 0
 
 
 def test_annotation_stats(settings):

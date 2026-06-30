@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from llm_review_analysis.agents.analytics_agent import AnalyticsAgent
+from llm_review_analysis.agents.language_agent import LanguageAgent
+from llm_review_analysis.agents.retrieval_agent import RetrievalAgent, RetrievalError
 from llm_review_analysis.agents.semantic_reasoning_agent import SemanticReasoningAgent
 from llm_review_analysis.config import Settings
 from llm_review_analysis.db.schema import REVIEW_COLUMNS, list_review_tables, normalize_table_name, validate_identifier
@@ -18,6 +20,13 @@ from llm_review_analysis.llm import LLMProvider
 class PromptMetadata:
     product_name: str | None
     date_range: str | None = None
+
+
+@dataclass(frozen=True)
+class PromptLanguageInfo:
+    original_prompt: str
+    original_language: str
+    internal_prompt: str
 
 
 @dataclass(frozen=True)
@@ -37,15 +46,26 @@ class ControlledFailure:
 
 
 class ReviewOrchestrator:
-    def __init__(self, settings: Settings, provider: LLMProvider) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        provider: LLMProvider,
+        *,
+        language_agent: LanguageAgent | None = None,
+        retrieval_agent: RetrievalAgent | None = None,
+        semantic_reasoning_agent: SemanticReasoningAgent | None = None,
+        analytics_agent: AnalyticsAgent | None = None,
+    ) -> None:
         self.settings = settings
         self.provider = provider
-        self.semantic_reasoning_agent = SemanticReasoningAgent(
+        self.language_agent = language_agent or LanguageAgent(provider)
+        self.retrieval_agent = retrieval_agent or RetrievalAgent(settings, provider=provider)
+        self.semantic_reasoning_agent = semantic_reasoning_agent or SemanticReasoningAgent(
             settings=settings,
             provider=provider,
             backend=settings.semantic_retrieval_backend,
         )
-        self.analytics_agent = AnalyticsAgent(settings, provider)
+        self.analytics_agent = analytics_agent or AnalyticsAgent(settings, provider)
 
     def extract_metadata(self, prompt: str) -> PromptMetadata:
         date_range = _extract_date_range(prompt)
@@ -73,21 +93,33 @@ class ReviewOrchestrator:
             return "ANALYTICS"
         if any(word in lower for word in ("why", "how", "issue", "problem", "good", "bad")):
             return "SEMANTICS"
-        return "DIRECT_SQL"
+        return "UNSUPPORTED"
 
     def answer(self, conn: sqlite3.Connection, prompt: str, *, product_table: str | None = None):
         result, _ = self.answer_with_trace(conn, prompt, product_table=product_table)
         return result
 
     def answer_with_trace(self, conn: sqlite3.Connection, prompt: str, *, product_table: str | None = None):
-        metadata = self.extract_metadata(prompt)
+        language_info = self._prepare_prompt(prompt)
+        internal_prompt = language_info.internal_prompt
+        metadata = self.extract_metadata(internal_prompt)
         table = product_table or self._match_table(conn, metadata.product_name)
+        retrieval_attempted = False
+        retrieval_error = None
+        if not table and metadata.product_name:
+            retrieval_attempted = True
+            table, retrieval_error = self._retrieve_missing_table(conn, metadata.product_name)
         trace_product_name = _trace_product_name(metadata.product_name, table)
         trace = {
             "prompt": prompt,
+            "original_prompt": language_info.original_prompt,
+            "original_language": language_info.original_language,
+            "internal_prompt": internal_prompt,
             "product_name": trace_product_name,
             "date_range": metadata.date_range,
             "table": table,
+            "retrieval_attempted": retrieval_attempted,
+            "retrieval_error": retrieval_error,
             "route": None,
             "sql": None,
             "evidence_ids": [],
@@ -98,10 +130,14 @@ class ReviewOrchestrator:
             "failure_reason": None,
         }
         if not table:
-            failure = _unknown_product_failure(metadata.product_name)
+            failure = (
+                _retrieval_failure(metadata.product_name, retrieval_error)
+                if retrieval_attempted and retrieval_error
+                else _unknown_product_failure(metadata.product_name)
+            )
             _apply_controlled_failure(trace, failure)
-            return _failure_result(failure), trace
-        decision = self.route(prompt)
+            return self._failure_result_for_language(failure, language_info.original_language), trace
+        decision = self.route(internal_prompt)
         trace["route"] = decision
         if decision == "ANALYTICS":
             result = self.analytics_agent.run(conn, table, prompt)
@@ -117,20 +153,63 @@ class ReviewOrchestrator:
             )
             return result, trace
         if decision == "SEMANTICS":
-            controlled_failure = self._semantic_controlled_failure(conn, table, prompt, metadata.product_name)
+            controlled_failure = self._semantic_controlled_failure(conn, table, internal_prompt, metadata.product_name)
             if controlled_failure:
                 _apply_controlled_failure(trace, controlled_failure)
-                return _failure_result(controlled_failure), trace
-            semantic_trace = self.semantic_reasoning_agent.answer_with_trace(conn, table, prompt)
+                return self._failure_result_for_language(controlled_failure, language_info.original_language), trace
+            semantic_trace = self.semantic_reasoning_agent.answer_with_trace(conn, table, internal_prompt)
             trace["evidence_ids"] = list(semantic_trace.evidence_ids)
             trace["evidence_snippets"] = list(semantic_trace.evidence_snippets)
-            return {"type": "text", "message": semantic_trace.answer}, trace
-        message, direct_trace = self._run_direct_sql(conn, table, prompt)
-        trace["sql"] = direct_trace.sql
-        trace["sql_columns"] = list(direct_trace.columns)
-        trace["sql_row_count"] = direct_trace.row_count
-        trace["sql_planner"] = direct_trace.planner
-        return {"type": "text", "message": message}, trace
+            return {"type": "text", "message": self._translate_response_text(semantic_trace.answer, language_info.original_language)}, trace
+        if decision == "DIRECT_SQL":
+            message, direct_trace = self._run_direct_sql(conn, table, internal_prompt)
+            trace["sql"] = direct_trace.sql
+            trace["sql_columns"] = list(direct_trace.columns)
+            trace["sql_row_count"] = direct_trace.row_count
+            trace["sql_planner"] = direct_trace.planner
+            return {"type": "text", "message": self._translate_response_text(message, language_info.original_language)}, trace
+
+        failure = _unsupported_route_failure(decision)
+        _apply_controlled_failure(trace, failure)
+        return self._failure_result_for_language(failure, language_info.original_language), trace
+
+    def _prepare_prompt(self, prompt: str) -> PromptLanguageInfo:
+        language, translation = self.language_agent.detect_and_translate_text(prompt)
+        internal_prompt = translation or prompt
+        return PromptLanguageInfo(
+            original_prompt=prompt,
+            original_language=language or "en",
+            internal_prompt=internal_prompt,
+        )
+
+    def _retrieve_missing_table(self, conn: sqlite3.Connection, product_name: str) -> tuple[str | None, str | None]:
+        try:
+            if hasattr(self.retrieval_agent, "retrieve_live"):
+                raw_table = self.retrieval_agent.retrieve_live(product_name)
+            elif hasattr(self.retrieval_agent, "fetch"):
+                raw_table = self.retrieval_agent.fetch(product_name)
+            else:
+                return None, "Retrieval agent does not expose a retrieval method."
+            if not raw_table:
+                return None, "Retrieval did not return a table name."
+            table = validate_identifier(str(raw_table))
+            if table not in list_review_tables(conn):
+                return None, f"Retrieved table was not found in the local database: {table}."
+            return table, None
+        except (RetrievalError, RuntimeError, NotImplementedError, ValueError) as exc:
+            return None, str(exc)
+        except Exception as exc:  # noqa: BLE001 - retrieval adapters should fail closed.
+            return None, f"Retrieval failed: {exc}"
+
+    def _translate_response_text(self, text: str, target_language: str) -> str:
+        if _is_english_language(target_language):
+            return text
+        return self.language_agent.translate_text(text, target_language)
+
+    def _failure_result_for_language(self, failure: ControlledFailure, target_language: str) -> dict[str, str]:
+        result = _failure_result(failure)
+        result["message"] = self._translate_response_text(result["message"], target_language)
+        return result
 
     def _match_table(self, conn: sqlite3.Connection, product_name: str | None) -> str | None:
         tables = list_review_tables(conn)
@@ -231,13 +310,13 @@ class ReviewOrchestrator:
 
 
 def _deterministic_direct_sql(table: str, prompt: str) -> str:
-        lower = prompt.lower()
-        where_clause = _date_where_clause(prompt)
-        if "average" in lower or "avg" in lower:
-            return f"SELECT AVG(CAST(rating AS REAL)) AS avg_rating FROM {table}{where_clause}"
-        elif "how many" in lower or "count" in lower or "number" in lower:
-            return f"SELECT COUNT(*) AS review_count FROM {table}{where_clause}"
+    lower = prompt.lower()
+    where_clause = _date_where_clause(prompt)
+    if "average" in lower or "avg" in lower:
+        return f"SELECT AVG(CAST(rating AS REAL)) AS avg_rating FROM {table}{where_clause}"
+    elif "how many" in lower or "count" in lower or "number" in lower:
         return f"SELECT COUNT(*) AS review_count FROM {table}{where_clause}"
+    return f"SELECT COUNT(*) AS review_count FROM {table}{where_clause}"
 
 
 def _clean_product_name(raw: str) -> str:
@@ -308,6 +387,23 @@ def _unknown_product_failure(product_name: str | None) -> ControlledFailure:
     )
 
 
+def _retrieval_failure(product_name: str | None, reason: str | None) -> ControlledFailure:
+    target = product_name or "the requested product"
+    return ControlledFailure(
+        "retrieval_failed",
+        f"Review retrieval or enrichment could not be completed for {target}.",
+        reason or "Retrieval did not produce a usable local review table.",
+    )
+
+
+def _unsupported_route_failure(route: str) -> ControlledFailure:
+    return ControlledFailure(
+        "unsupported_route",
+        "The request could not be routed to a supported processing pathway. Please ask for a factual answer, an evidence-based explanation, or a supported chart.",
+        f"Unsupported route decision: {route}.",
+    )
+
+
 def _failure_result(failure: ControlledFailure) -> dict[str, str]:
     return {
         "type": "text",
@@ -327,6 +423,10 @@ def _copy_result_failure(result: dict[str, Any], trace: dict[str, Any]) -> None:
     if category:
         trace["failure_category"] = str(category)
         trace["failure_reason"] = str(result.get("failure_reason") or result.get("message") or "")
+
+
+def _is_english_language(language: str) -> bool:
+    return language.strip().lower() in {"en", "eng", "english"}
 
 
 def _is_context_dependent_prompt(prompt: str) -> bool:

@@ -13,6 +13,8 @@ dist/
 # Runtime data and generated artifacts
 data/*.db
 data/*.sqlite
+*.db-shm
+*.db-wal
 data/*.jsonl
 data/*.jsonl.gz
 data/*.json
