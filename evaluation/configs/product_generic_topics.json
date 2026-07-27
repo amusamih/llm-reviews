@@ -1,16 +1,62 @@
-[
-  "delivery and packaging",
-  "product quality and durability",
-  "price and value",
-  "usability and setup",
-  "performance and functionality",
-  "design and appearance",
-  "compatibility and fit",
-  "comfort and ergonomics",
-  "content and media quality",
-  "taste scent and consumable experience",
-  "power battery and charging",
-  "customer support returns and warranty",
-  "safety and reliability",
-  "overall satisfaction"
-]
+{
+  "name": "product_generic_topics",
+  "version": 1,
+  "topics": [
+    {
+      "label": "delivery and packaging",
+      "definition": "Shipping speed, delivery reliability, packaging condition, missing parts, or arrival experience."
+    },
+    {
+      "label": "product quality and durability",
+      "definition": "Build quality, materials, defects, breakage, wear, durability, or whether the product feels well made."
+    },
+    {
+      "label": "price and value",
+      "definition": "Cost, value for money, discounts, perceived fairness of price, or whether the purchase feels worth it."
+    },
+    {
+      "label": "usability and setup",
+      "definition": "Ease of use, setup, installation, instructions, controls, learning curve, or day-to-day operation."
+    },
+    {
+      "label": "performance and functionality",
+      "definition": "Whether the product works as intended, feature operation, effectiveness, speed, responsiveness, or task performance."
+    },
+    {
+      "label": "design and appearance",
+      "definition": "Appearance, style, color, shape, finish, size impression, or visual design."
+    },
+    {
+      "label": "compatibility and fit",
+      "definition": "Fit with devices, bodies, spaces, accessories, sizes, standards, or intended use conditions."
+    },
+    {
+      "label": "comfort and ergonomics",
+      "definition": "Comfort, wearability, handling, weight, grip, tactile feel, or physical ease during use."
+    },
+    {
+      "label": "content and media quality",
+      "definition": "Books, ebooks, music, video, games, media content, narrative quality, audio-visual content, or entertainment value."
+    },
+    {
+      "label": "taste scent and consumable experience",
+      "definition": "Taste, smell, texture, freshness, skin feel, formulation, or other consumable-product experience."
+    },
+    {
+      "label": "power battery and charging",
+      "definition": "Battery duration, charging speed, power use, power stability, or charging compatibility."
+    },
+    {
+      "label": "customer support returns and warranty",
+      "definition": "Seller or manufacturer support, returns, refunds, warranty claims, replacement, or service responsiveness."
+    },
+    {
+      "label": "safety and reliability",
+      "definition": "Safety concerns, overheating, malfunction risk, recurring failure, reliability, or trust in continued operation."
+    },
+    {
+      "label": "overall satisfaction",
+      "definition": "General praise, complaint, recommendation, disappointment, or overall purchase satisfaction when no narrower aspect dominates."
+    }
+  ]
+}

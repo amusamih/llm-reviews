@@ -43,7 +43,7 @@ The `model-substitution` extra name is retained for backward compatibility and i
 
 ## Configuration
 
-Copy `.env.example` to `.env` locally if you need to configure optional live calls. Do not commit `.env`.
+Copy `.env.example` to `.env` in the repository root if you need to configure optional live calls or the Flask demo. Do not commit `.env`. Repository-root `.env` values are loaded for missing variables only, so values already exported by your shell take precedence.
 
 Safe defaults:
 
@@ -64,7 +64,7 @@ SEMANTIC_RETRIEVAL_BACKEND=lexical
 - `HF_QWEN_ENDPOINT_URL`
 - `FLASK_SECRET_KEY`
 
-Set `FLASK_SECRET_KEY` to a strong random value before using the Flask demo outside local development.
+Set `FLASK_SECRET_KEY` to a strong random value for persistent sessions or any deployed use.
 
 ## Workflow Notes
 
@@ -80,11 +80,11 @@ The repository includes a lightweight Flask interface for local research/demo us
 python -m app.server
 ```
 
-The local server uses the configured `REVIEWS_DB_PATH`, which defaults to `data/reviews.db`. Populate a local review database with your own data or the provided helper scripts before expecting product-specific answers. The demo is available at `http://127.0.0.1:5000/` by default.
+The local server loads repository-root `.env` values before reading settings. It uses the configured `REVIEWS_DB_PATH`, which defaults to `data/reviews.db`. Populate a local review database with your own data or the provided helper scripts before expecting product-specific answers. The demo is available at `http://127.0.0.1:5000/` by default.
 
-The Flask interface keeps only compact session-scoped dialogue state, such as the active product table, filters, previous route, compact summaries, chart context, and evidence references. It does not store API credentials, database connections, raw review corpora, vector stores, Base64 chart payloads, or unrestricted conversation history. Use the reset endpoint or a reset prompt to clear the current browser session state.
+The Flask interface keeps only compact dialogue state in the browser session cookie, such as the active product table, filters, previous route, compact summaries, chart context, and evidence references. It does not store API credentials, database connections, raw review corpora, vector stores, Base64 chart payloads, or unrestricted conversation history. Use the reset endpoint or a reset prompt to clear the current browser session state.
 
-The Flask server is not a production deployment. Live LLM calls remain disabled unless provider credentials are configured locally and live execution is explicitly enabled for the relevant run.
+The Flask server is not a production deployment. If `FLASK_SECRET_KEY` is not set during local development, the app generates an ephemeral process-local secret, which invalidates sessions after restart. Production-like modes require `FLASK_SECRET_KEY`. Live LLM calls remain disabled unless provider credentials are configured locally and live execution is explicitly enabled for the relevant run.
 
 ## Running Offline Tests
 
@@ -163,7 +163,7 @@ The public product-generic topic vocabulary is available at:
 evaluation/configs/product_generic_topics.json
 ```
 
-The default application configuration may use a domain-oriented illustrative topic vocabulary. The separate public 14-label product-generic vocabulary corresponds to the label set described for the held-out cross-language evaluation. The repository does not redistribute the private MARC review bodies or generated translations.
+The default application configuration may use a domain-oriented illustrative topic vocabulary. The separate public 14-label product-generic configuration includes the verified definitions used for that evaluation setup and is provided for reproducibility. It is not a result artifact or private lock manifest. The repository does not redistribute the private MARC review bodies or generated translations.
 
 The controlled component fixture at `evaluation/live_controlled_component_ablation_items.json` contains public controlled items for exercising the component-evaluation code. It is not the private final MARC dataset, not the private Samsung review artifact, and not a source of manuscript final metrics by itself.
 

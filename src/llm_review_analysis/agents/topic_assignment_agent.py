@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 import sqlite3
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Mapping, Sequence
 
 from llm_review_analysis.db.schema import validate_identifier
 from llm_review_analysis.llm import LLMProvider
@@ -44,6 +44,14 @@ class TopicAssignmentFailure:
     raw_responses: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class TopicVocabulary:
+    labels: tuple[str, ...]
+    definitions: dict[str, str]
+    name: str | None = None
+    version: int | None = None
+
+
 class TopicAssignmentAgent:
     """LLM-based topic inference and per-review assignment.
 
@@ -74,14 +82,14 @@ class TopicAssignmentAgent:
             raise TopicAssignmentError("Topic inference did not return a valid topic vocabulary.")
         return topics[:max_topics]
 
-    def assign_topic(self, review_text: str, topics: list[str]) -> str:
+    def assign_topic(self, review_text: str, topics: Sequence[str] | TopicVocabulary) -> str:
         return self.assign_topic_with_trace(review_text, topics)["topic"]
 
-    def assign_topic_with_trace(self, review_text: str, topics: list[str]) -> dict[str, object]:
-        normalized_topics = _normalize_topic_list(topics)
+    def assign_topic_with_trace(self, review_text: str, topics: Sequence[str] | TopicVocabulary) -> dict[str, object]:
+        normalized_topics, configured_definitions = _resolve_topic_input(topics)
         if not normalized_topics:
             raise TopicAssignmentError("No allowed topics were provided for topic assignment.")
-        prompt = _topic_assignment_prompt(review_text, normalized_topics, self.topic_definitions)
+        prompt = _topic_assignment_prompt(review_text, normalized_topics, {**self.topic_definitions, **configured_definitions})
         raw_responses: list[str] = []
         for attempt in range(self.max_assignment_retries + 1):
             response = self.provider.generate(prompt, purpose="topic_assign", response_format="json")
@@ -224,15 +232,53 @@ def _normalize_topic(topic: str) -> str:
     return aliases.get(cleaned, cleaned)
 
 
-def load_topic_vocabulary(path: str | Path) -> list[str]:
+def _resolve_topic_input(topics: Sequence[str] | TopicVocabulary) -> tuple[list[str], dict[str, str]]:
+    if isinstance(topics, TopicVocabulary):
+        return list(topics.labels), dict(topics.definitions)
+    return _normalize_topic_list(tuple(str(topic) for topic in topics)), {}
+
+
+def load_topic_vocabulary_config(path: str | Path) -> TopicVocabulary:
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     if isinstance(payload, list):
-        raw_topics = payload
+        labels = _normalize_topic_list([str(topic) for topic in payload])
+        definitions: dict[str, str] = {}
+        name = None
+        version = None
     elif isinstance(payload, dict):
+        name = str(payload.get("name") or "").strip() or None
+        raw_version = payload.get("version")
+        version = int(raw_version) if isinstance(raw_version, int) else None
         raw_topics = payload.get("topics", payload.get("labels", []))
+        labels, definitions = _labels_and_definitions(raw_topics, payload.get("definitions", {}))
     else:
-        raw_topics = []
-    topics = _normalize_topic_list([str(topic) for topic in raw_topics])
-    if not topics:
+        labels = []
+        definitions = {}
+        name = None
+        version = None
+    if not labels:
         raise TopicAssignmentError(f"No topic labels were found in {path}.")
-    return topics
+    return TopicVocabulary(labels=tuple(labels), definitions=definitions, name=name, version=version)
+
+
+def load_topic_vocabulary(path: str | Path) -> list[str]:
+    return list(load_topic_vocabulary_config(path).labels)
+
+
+def _labels_and_definitions(raw_topics: object, raw_definitions: object) -> tuple[list[str], dict[str, str]]:
+    labels: list[str] = []
+    definitions: dict[str, str] = {}
+    definition_map = raw_definitions if isinstance(raw_definitions, Mapping) else {}
+    if isinstance(raw_topics, list):
+        for item in raw_topics:
+            if isinstance(item, Mapping):
+                label = _normalize_topic(str(item.get("label", "")))
+                definition = str(item.get("definition", "")).strip()
+            else:
+                label = _normalize_topic(str(item))
+                definition = str(definition_map.get(label, "")).strip()
+            if label and label not in labels:
+                labels.append(label)
+            if label and definition:
+                definitions[label] = definition
+    return labels, definitions

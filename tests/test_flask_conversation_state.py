@@ -4,11 +4,60 @@ import json
 import sqlite3
 from typing import Any, Mapping
 
-from app.server import SESSION_STATE_KEY, create_app
+import pytest
+
+from app.server import (
+    SESSION_STATE_KEY,
+    create_app,
+    load_repository_dotenv,
+    resolve_flask_secret_key,
+)
 from llm_review_analysis.agents import ConversationState, ReviewOrchestrator
+from llm_review_analysis.db.schema import ensure_review_table
 
 
-def test_flask_chat_creates_compact_conversation_state(settings):
+def test_repository_root_dotenv_values_load_without_overwriting_process_env(tmp_path, monkeypatch):
+    dotenv_path = tmp_path / ".env"
+    dotenv_path.write_text("FLASK_SECRET_KEY=from-dotenv\nLLM_PROVIDER=langchain\n", encoding="utf-8")
+    monkeypatch.delenv("FLASK_SECRET_KEY", raising=False)
+    monkeypatch.setenv("LLM_PROVIDER", "mock")
+
+    assert load_repository_dotenv(dotenv_path) is True
+
+    assert resolve_flask_secret_key() == "from-dotenv"
+    assert __import__("os").environ["LLM_PROVIDER"] == "mock"
+
+
+def test_configured_flask_secret_key_is_used():
+    assert resolve_flask_secret_key({"FLASK_SECRET_KEY": "configured-secret"}) == "configured-secret"
+
+
+def test_local_development_secret_is_ephemeral_and_not_former_fixed_value():
+    first = resolve_flask_secret_key({"APP_ENV": "development"})
+    second = resolve_flask_secret_key({"APP_ENV": "development"})
+
+    assert first
+    assert second
+    assert first != second
+    assert first != "llm-review-analysis-dev-secret"
+
+
+def test_missing_flask_secret_fails_in_production_mode():
+    with pytest.raises(RuntimeError, match="FLASK_SECRET_KEY"):
+        resolve_flask_secret_key({"APP_ENV": "production"})
+
+
+def test_flask_cookie_settings_are_directly_configured(settings, monkeypatch):
+    monkeypatch.setenv("FLASK_SECRET_KEY", "unit-secret")
+    app = create_app(settings=settings, provider=object(), orchestrator=FakeStatefulOrchestrator())
+
+    assert app.config["SESSION_COOKIE_HTTPONLY"] is True
+    assert app.config["SESSION_COOKIE_SAMESITE"] == "Lax"
+    assert app.config["SESSION_COOKIE_SECURE"] is False
+
+
+def test_flask_chat_creates_compact_conversation_state(settings, monkeypatch):
+    monkeypatch.setenv("FLASK_SECRET_KEY", "unit-secret")
     orchestrator = FakeStatefulOrchestrator()
     app = create_app(settings=settings, provider=object(), orchestrator=orchestrator)
     client = app.test_client()
@@ -24,7 +73,9 @@ def test_flask_chat_creates_compact_conversation_state(settings):
     json.dumps(state)
 
 
-def test_flask_followup_uses_inherited_product_context(settings):
+def test_flask_followup_uses_inherited_product_context(settings, monkeypatch):
+    monkeypatch.setenv("FLASK_SECRET_KEY", "unit-secret")
+    _ensure_tables(settings, "sample_product")
     orchestrator = FakeStatefulOrchestrator()
     app = create_app(settings=settings, provider=object(), orchestrator=orchestrator)
     client = app.test_client()
@@ -39,7 +90,9 @@ def test_flask_followup_uses_inherited_product_context(settings):
         assert session[SESSION_STATE_KEY]["active_filters"] == {"rating": "5"}
 
 
-def test_flask_product_switch_replaces_session_context(settings):
+def test_flask_product_switch_replaces_session_context(settings, monkeypatch):
+    monkeypatch.setenv("FLASK_SECRET_KEY", "unit-secret")
+    _ensure_tables(settings, "sample_product", "other_product")
     orchestrator = FakeStatefulOrchestrator()
     app = create_app(settings=settings, provider=object(), orchestrator=orchestrator)
     client = app.test_client()
@@ -54,7 +107,8 @@ def test_flask_product_switch_replaces_session_context(settings):
     assert state["active_filters"] == {}
 
 
-def test_flask_reset_route_clears_only_current_session(settings):
+def test_flask_reset_route_clears_only_current_session(settings, monkeypatch):
+    monkeypatch.setenv("FLASK_SECRET_KEY", "unit-secret")
     app = create_app(settings=settings, provider=object(), orchestrator=FakeStatefulOrchestrator())
     first = app.test_client()
     second = app.test_client()
@@ -70,7 +124,9 @@ def test_flask_reset_route_clears_only_current_session(settings):
         assert session[SESSION_STATE_KEY]["matched_table"] == "other_product"
 
 
-def test_flask_reset_prompt_clears_session(settings):
+def test_flask_reset_prompt_clears_session(settings, monkeypatch):
+    monkeypatch.setenv("FLASK_SECRET_KEY", "unit-secret")
+    _ensure_tables(settings, "sample_product")
     app = create_app(settings=settings, provider=object(), orchestrator=FakeStatefulOrchestrator())
     client = app.test_client()
 
@@ -82,7 +138,8 @@ def test_flask_reset_prompt_clears_session(settings):
         assert SESSION_STATE_KEY not in session
 
 
-def test_flask_session_does_not_store_large_response_payloads(settings):
+def test_flask_session_does_not_store_large_response_payloads(settings, monkeypatch):
+    monkeypatch.setenv("FLASK_SECRET_KEY", "unit-secret")
     app = create_app(settings=settings, provider=object(), orchestrator=FakeStatefulOrchestrator())
     client = app.test_client()
 
@@ -95,6 +152,21 @@ def test_flask_session_does_not_store_large_response_payloads(settings):
     serialized = json.dumps(state)
     assert "chart_b64" not in serialized
     assert len(serialized) < 2000
+
+
+def test_flask_drops_forged_or_stale_matched_table_from_session(settings, monkeypatch):
+    monkeypatch.setenv("FLASK_SECRET_KEY", "unit-secret")
+    orchestrator = FakeStatefulOrchestrator()
+    app = create_app(settings=settings, provider=object(), orchestrator=orchestrator)
+    client = app.test_client()
+    with client.session_transaction() as session:
+        session[SESSION_STATE_KEY] = ConversationState(product_name="forged product", matched_table="forged_table").to_dict()
+
+    response = client.post("/chat", json={"prompt": "Now do the same for five-star reviews."})
+
+    assert response.status_code == 200
+    assert orchestrator.calls[-1]["state"]["matched_table"] is None
+    assert orchestrator.calls[-1]["state"]["product_name"] is None
 
 
 def test_programmatic_stateless_answer_path_remains_available():
@@ -146,3 +218,12 @@ class FakeStatefulOrchestrator:
             turn_count=min(previous.turn_count + 1, 9),
         )
         return result, state_out, {}
+
+
+def _ensure_tables(settings, *tables: str) -> None:
+    conn = sqlite3.connect(settings.database_path)
+    try:
+        for table in tables:
+            ensure_review_table(conn, table)
+    finally:
+        conn.close()
