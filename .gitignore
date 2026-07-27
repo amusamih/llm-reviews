@@ -13,6 +13,7 @@ dist/
 # Runtime data and generated artifacts
 data/*.db
 data/*.sqlite
+data/*.sqlite3
 *.db-shm
 *.db-wal
 data/*.jsonl
@@ -26,10 +27,51 @@ data/processed/
 data/vectorstores/
 outputs/
 logs/
+evaluation/results/
+**/results/
+**/judge_outputs.jsonl
+**/preflight.json
+**/summary.json
+**/summary.md
+**/combined_report.json
+**/manifest.json
+**/*_manifest.json
+**/*_lock*.json
+**/*_locked*.json
+**/*_audit*.json
+**/*_audit*.md
 *.log
 timings.csv
 page_debug_*.html
 reviews_*.csv
+
+# Revision, manuscript, and local working materials
+revision_materials/
+rebuttal*/
+manuscript*/
+archives/
+archive/
+backups/
+backup/
+
+# Manuscript, rendered files, archives, and binary data artifacts
+*.docx
+*.pdf
+*.tex
+*.aux
+*.toc
+*.synctex.gz
+*.zip
+*.tar
+*.tar.gz
+*.7z
+*.rar
+*.pkl
+*.pickle
+*.npy
+*.npz
+*.parquet
+*.feather
 
 # Tooling caches
 .pytest_cache/
@@ -50,3 +92,20 @@ Thumbs.db
 evaluation/author_input_checklist.py
 tests/test_*evidence_package.py
 tests/test_gold_benchmark_and_dataset_stats.py
+evaluation/README_r6c3*.md
+evaluation/README_round4*.md
+evaluation/adaptability_head_to_head.py
+evaluation/bert_family_baseline.py
+evaluation/conventional_modular_pipeline.py
+evaluation/dialogue_state_live_evaluation.py
+evaluation/dialogue_state_preflight.py
+evaluation/oats_head_to_head.py
+evaluation/topic_modeling_baselines.py
+evaluation/traditional_baselines.py
+evaluation/workflow_applicability.py
+evaluation/r6c3_*
+evaluation/round4_*
+evaluation/*round4*.py
+evaluation/configs/r6c3_*
+evaluation/data/r6c3_*
+evaluation/scripts/*r6c3*.py

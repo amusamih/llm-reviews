@@ -140,7 +140,7 @@ evaluation/interface_robustness_prompts.json
 
 Dataset preparation utilities are available under `scripts/` and `evaluation/`. Raw downloaded datasets, generated benchmark prompt/review artifacts, and generated SQLite databases are kept out of version control by default.
 
-The public repository does not redistribute third-party platform reviews or the canonical local case-study database used for the manuscript's controlled quantitative results. Exact manuscript quantitative reproduction requires the corresponding local case-study data/artifacts or regenerated local data consistent with the documented schema. The code supports inspection, re-execution, and adaptation, but exact LLM-generated outputs may vary with model availability, version updates, API behavior, and runtime conditions.
+The public repository does not redistribute third-party platform reviews, raw MARC review bodies, full generated MARC translations, or the canonical local case-study database used for the manuscript's controlled quantitative results. Exact manuscript quantitative reproduction requires the corresponding local case-study data/artifacts or regenerated local data consistent with the documented schema. The code supports inspection, re-execution, and adaptation, but exact LLM-generated outputs may vary with model availability, version updates, API behavior, and runtime conditions.
 
 Evaluation scripts may write local artifacts such as:
 

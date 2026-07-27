@@ -7,7 +7,7 @@ import pytest
 
 from llm_review_analysis.agents.retrieval_agent import RetrievalAgent
 from llm_review_analysis.agents.semantic_reasoning_agent import SemanticReasoningAgent, _load_langchain_semantic_components
-from llm_review_analysis.agents.semantic_tagger import SemanticTagger
+from llm_review_analysis.agents.semantic_tagger import SemanticTagger, SemanticTaggingError, SemanticTaxonomy
 from llm_review_analysis.db.schema import ensure_review_table, insert_review_rows
 from llm_review_analysis.llm import LLMResponse
 
@@ -71,6 +71,30 @@ def test_semantic_tagger_without_provider_uses_offline_fallback() -> None:
     tags = SemanticTagger().tag_text("Great product but bad delivery and not as advertised.")
 
     assert {"positive", "negative", "contradictory", "potentially misleading"}.issubset(set(tags))
+
+
+def test_semantic_tagger_provider_retries_then_records_failure() -> None:
+    provider = RecordingProvider({"semantic_tagging": "not json"})
+    tagger = SemanticTagger(provider=provider, use_provider=True, max_retries=2)
+
+    with pytest.raises(SemanticTaggingError) as excinfo:
+        tagger.tag_text("This review cannot be parsed from the mocked response.")
+
+    assert excinfo.value.raw_responses == ("not json", "not json", "not json")
+    assert len(provider.calls) == 3
+
+
+def test_semantic_taxonomy_preserves_eight_labels() -> None:
+    assert SemanticTaxonomy().all_labels == (
+        "positive",
+        "negative",
+        "helpful",
+        "vague",
+        "no justification",
+        "contradictory",
+        "duplicate",
+        "potentially misleading",
+    )
 
 
 def test_retrieval_enrichment_stores_provider_backed_semantic_tags(settings) -> None:

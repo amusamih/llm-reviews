@@ -76,13 +76,15 @@ class MockLLMProvider:
             return LLMResponse(content="LANGUAGE: en", model=self.model)
 
         if purpose == "topic_list":
-            return LLMResponse(content="battery, delivery, quality, price, usability", model=self.model)
+            return LLMResponse(content=json.dumps({"topics": ["battery life", "delivery", "quality", "price", "usability"]}), model=self.model)
 
         if purpose == "topic_assign":
-            for topic in ("battery", "delivery", "quality", "price", "usability"):
+            if "battery" in lower:
+                return LLMResponse(content=json.dumps({"topic": "battery life"}), model=self.model)
+            for topic in ("delivery", "quality", "price", "usability"):
                 if topic in lower:
-                    return LLMResponse(content=topic, model=self.model)
-            return LLMResponse(content="quality", model=self.model)
+                    return LLMResponse(content=json.dumps({"topic": topic}), model=self.model)
+            return LLMResponse(content=json.dumps({"topic": "quality"}), model=self.model)
 
         return LLMResponse(content="Mock response generated without a live API call.", model=self.model)
 
@@ -91,4 +93,7 @@ def _mock_user_request(prompt: str) -> str:
     marker = "User request:"
     if marker in prompt:
         return prompt.rsplit(marker, 1)[-1]
+    review_marker = "Review:"
+    if review_marker in prompt:
+        return prompt.rsplit(review_marker, 1)[-1]
     return prompt

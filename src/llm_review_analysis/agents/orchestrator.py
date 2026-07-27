@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Mapping
 
 from llm_review_analysis.agents.analytics_agent import AnalyticsAgent
 from llm_review_analysis.agents.language_agent import LanguageAgent
@@ -30,6 +30,76 @@ class PromptLanguageInfo:
 
 
 @dataclass(frozen=True)
+class ConversationState:
+    product_name: str | None = None
+    matched_table: str | None = None
+    active_filters: dict[str, str] = field(default_factory=dict)
+    previous_route: str | None = None
+    previous_query: str | None = None
+    previous_result_summary: str | None = None
+    previous_numeric_result: float | None = None
+    previous_chart_spec: dict[str, str] | None = None
+    evidence_ids: tuple[str, ...] = ()
+    evidence_summary: str | None = None
+    response_language: str | None = None
+    turn_count: int = 0
+
+    @classmethod
+    def from_mapping(cls, raw: Mapping[str, Any] | "ConversationState" | None) -> "ConversationState":
+        if raw is None:
+            return cls()
+        if isinstance(raw, cls):
+            return cls(
+                product_name=raw.product_name,
+                matched_table=raw.matched_table,
+                active_filters=dict(raw.active_filters),
+                previous_route=raw.previous_route,
+                previous_query=raw.previous_query,
+                previous_result_summary=raw.previous_result_summary,
+                previous_numeric_result=raw.previous_numeric_result,
+                previous_chart_spec=dict(raw.previous_chart_spec) if raw.previous_chart_spec else None,
+                evidence_ids=tuple(raw.evidence_ids),
+                evidence_summary=raw.evidence_summary,
+                response_language=raw.response_language,
+                turn_count=raw.turn_count,
+            )
+        return cls(
+            product_name=_optional_state_str(raw.get("product_name")),
+            matched_table=_optional_state_str(raw.get("matched_table")),
+            active_filters={str(k): str(v) for k, v in dict(raw.get("active_filters") or {}).items()},
+            previous_route=_optional_state_str(raw.get("previous_route")),
+            previous_query=_optional_state_str(raw.get("previous_query")),
+            previous_result_summary=_optional_state_str(raw.get("previous_result_summary")),
+            previous_numeric_result=_optional_state_float(raw.get("previous_numeric_result")),
+            previous_chart_spec={str(k): str(v) for k, v in dict(raw.get("previous_chart_spec") or {}).items()} or None,
+            evidence_ids=tuple(str(item) for item in raw.get("evidence_ids") or ()),
+            evidence_summary=_optional_state_str(raw.get("evidence_summary")),
+            response_language=_optional_state_str(raw.get("response_language")),
+            turn_count=int(raw.get("turn_count") or 0),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "product_name": self.product_name,
+            "matched_table": self.matched_table,
+            "active_filters": dict(self.active_filters),
+            "previous_route": self.previous_route,
+            "previous_query": self.previous_query,
+            "previous_result_summary": self.previous_result_summary,
+            "previous_numeric_result": self.previous_numeric_result,
+            "previous_chart_spec": dict(self.previous_chart_spec) if self.previous_chart_spec else None,
+            "evidence_ids": list(self.evidence_ids),
+            "evidence_summary": self.evidence_summary,
+            "response_language": self.response_language,
+            "turn_count": self.turn_count,
+        }
+
+    @classmethod
+    def reset(cls) -> "ConversationState":
+        return cls()
+
+
+@dataclass(frozen=True)
 class DirectSQLTrace:
     sql: str
     columns: tuple[str, ...]
@@ -43,6 +113,22 @@ class ControlledFailure:
     category: str
     message: str
     reason: str
+
+
+@dataclass(frozen=True)
+class _ContextResolution:
+    internal_prompt: str
+    analytics_prompt: str
+    product_table: str | None
+    product_name: str | None
+    active_filters: dict[str, str]
+    context_dependent: bool
+    context_used: bool
+    product_switched: bool
+    failure: ControlledFailure | None = None
+
+
+MAX_STATE_TURNS = 8
 
 
 class ReviewOrchestrator:
@@ -101,20 +187,108 @@ class ReviewOrchestrator:
 
     def answer_with_trace(self, conn: sqlite3.Connection, prompt: str, *, product_table: str | None = None):
         language_info = self._prepare_prompt(prompt)
-        internal_prompt = language_info.internal_prompt
+        return self._answer_prepared_with_trace(conn, language_info, product_table=product_table)
+
+    def answer_with_state(
+        self,
+        conn: sqlite3.Connection,
+        prompt: str,
+        *,
+        state: ConversationState | Mapping[str, Any] | None = None,
+        product_table: str | None = None,
+        reset: bool = False,
+    ) -> tuple[dict[str, Any], ConversationState, dict[str, Any]]:
+        previous_state = ConversationState.from_mapping(state)
+        language_info = self._prepare_prompt(prompt)
+        if reset or _is_reset_prompt(language_info.internal_prompt):
+            reset_state = ConversationState.reset()
+            trace = _state_trace(language_info, internal_prompt=language_info.internal_prompt, route="RESET")
+            trace["state_reset"] = True
+            return (
+                {"type": "text", "message": self._translate_response_text("Conversation context has been reset.", language_info.original_language)},
+                reset_state,
+                trace,
+            )
+
+        resolution = self._resolve_dialogue_context(
+            conn,
+            language_info.internal_prompt,
+            previous_state,
+            product_table,
+            original_prompt=language_info.original_prompt,
+        )
+        if resolution.failure:
+            trace = _state_trace(language_info, internal_prompt=resolution.internal_prompt, route=None)
+            trace.update(
+                {
+                    "state_context_used": resolution.context_used,
+                    "context_dependent": resolution.context_dependent,
+                    "product_switched": resolution.product_switched,
+                    "active_filters": dict(resolution.active_filters),
+                }
+            )
+            _apply_controlled_failure(trace, resolution.failure)
+            result = self._failure_result_for_language(resolution.failure, language_info.original_language)
+            updated = self._updated_conversation_state(previous_state, language_info, result, trace, resolution)
+            return result, updated, trace
+
+        result, trace = self._answer_prepared_with_trace(
+            conn,
+            language_info,
+            product_table=resolution.product_table,
+            internal_prompt=resolution.internal_prompt,
+            analytics_prompt=resolution.analytics_prompt,
+            context_product_name=resolution.product_name,
+        )
+        trace.update(
+            {
+                "state_context_used": resolution.context_used,
+                "context_dependent": resolution.context_dependent,
+                "product_switched": resolution.product_switched,
+                "active_filters": dict(resolution.active_filters),
+            }
+        )
+        updated = self._updated_conversation_state(previous_state, language_info, result, trace, resolution)
+        return result, updated, trace
+
+    def answer_statefully(
+        self,
+        conn: sqlite3.Connection,
+        prompt: str,
+        *,
+        state: ConversationState | Mapping[str, Any] | None = None,
+        product_table: str | None = None,
+        reset: bool = False,
+    ) -> tuple[dict[str, Any], ConversationState, dict[str, Any]]:
+        return self.answer_with_state(conn, prompt, state=state, product_table=product_table, reset=reset)
+
+    def _answer_prepared_with_trace(
+        self,
+        conn: sqlite3.Connection,
+        language_info: PromptLanguageInfo,
+        *,
+        product_table: str | None = None,
+        internal_prompt: str | None = None,
+        analytics_prompt: str | None = None,
+        context_product_name: str | None = None,
+    ):
+        internal_prompt = internal_prompt or language_info.internal_prompt
+        analytics_prompt = analytics_prompt or language_info.original_prompt
         metadata = self.extract_metadata(internal_prompt)
+        product_name_for_trace = metadata.product_name or context_product_name
         table = product_table or self._match_table(conn, metadata.product_name)
         retrieval_attempted = False
         retrieval_error = None
         if not table and metadata.product_name:
             retrieval_attempted = True
             table, retrieval_error = self._retrieve_missing_table(conn, metadata.product_name)
-        trace_product_name = _trace_product_name(metadata.product_name, table)
+        trace_product_name = _trace_product_name(product_name_for_trace, table)
         trace = {
-            "prompt": prompt,
+            "prompt": language_info.original_prompt,
             "original_prompt": language_info.original_prompt,
             "original_language": language_info.original_language,
             "internal_prompt": internal_prompt,
+            "analytics_prompt": analytics_prompt,
             "product_name": trace_product_name,
             "date_range": metadata.date_range,
             "table": table,
@@ -140,7 +314,7 @@ class ReviewOrchestrator:
         decision = self.route(internal_prompt)
         trace["route"] = decision
         if decision == "ANALYTICS":
-            result = self.analytics_agent.run(conn, table, prompt)
+            result = self.analytics_agent.run(conn, table, analytics_prompt)
             _copy_result_failure(result, trace)
             trace.update(
                 {
@@ -160,6 +334,7 @@ class ReviewOrchestrator:
             semantic_trace = self.semantic_reasoning_agent.answer_with_trace(conn, table, internal_prompt)
             trace["evidence_ids"] = list(semantic_trace.evidence_ids)
             trace["evidence_snippets"] = list(semantic_trace.evidence_snippets)
+            trace["answer"] = semantic_trace.answer
             return {"type": "text", "message": self._translate_response_text(semantic_trace.answer, language_info.original_language)}, trace
         if decision == "DIRECT_SQL":
             message, direct_trace = self._run_direct_sql(conn, table, internal_prompt)
@@ -167,11 +342,128 @@ class ReviewOrchestrator:
             trace["sql_columns"] = list(direct_trace.columns)
             trace["sql_row_count"] = direct_trace.row_count
             trace["sql_planner"] = direct_trace.planner
+            trace["answer"] = message
             return {"type": "text", "message": self._translate_response_text(message, language_info.original_language)}, trace
 
         failure = _unsupported_route_failure(decision)
         _apply_controlled_failure(trace, failure)
         return self._failure_result_for_language(failure, language_info.original_language), trace
+
+    def _resolve_dialogue_context(
+        self,
+        conn: sqlite3.Connection,
+        internal_prompt: str,
+        state: ConversationState,
+        product_table: str | None,
+        *,
+        original_prompt: str | None = None,
+    ) -> _ContextResolution:
+        metadata = self.extract_metadata(internal_prompt)
+        explicit_product = metadata.product_name
+        explicit_filters = _extract_prompt_filters(internal_prompt)
+        context_dependent = _is_stateful_followup_prompt(internal_prompt)
+        omitted_product_followup = bool(state.matched_table and not explicit_product and _is_omitted_product_review_prompt(internal_prompt))
+        context_dependent = context_dependent or omitted_product_followup
+        if context_dependent and explicit_product and _is_filter_only_product_candidate(explicit_product):
+            explicit_product = None
+        matched_table = product_table or (self._match_table(conn, explicit_product) if explicit_product else None)
+        product_switched = bool(matched_table and state.matched_table and matched_table != state.matched_table)
+        context_used = False
+
+        if not matched_table and state.matched_table and context_dependent:
+            try:
+                matched_table = validate_identifier(state.matched_table)
+            except ValueError:
+                matched_table = None
+            context_used = bool(matched_table)
+
+        if context_dependent and not matched_table:
+            return _ContextResolution(
+                internal_prompt=internal_prompt,
+                analytics_prompt=internal_prompt,
+                product_table=None,
+                product_name=explicit_product,
+                active_filters={},
+                context_dependent=True,
+                context_used=False,
+                product_switched=False,
+                failure=ControlledFailure(
+                    "context_missing",
+                    "This follow-up question needs earlier review-analysis context. Please restate the product, review, or comparison target.",
+                    "Context-dependent prompt was submitted without usable session state.",
+                ),
+            )
+        if context_dependent and not explicit_product and state.turn_count >= MAX_STATE_TURNS:
+            return _ContextResolution(
+                internal_prompt=internal_prompt,
+                analytics_prompt=internal_prompt,
+                product_table=matched_table,
+                product_name=state.product_name,
+                active_filters=dict(state.active_filters),
+                context_dependent=True,
+                context_used=True,
+                product_switched=False,
+                failure=ControlledFailure(
+                    "stale_context",
+                    "The prior context is too old for a safe follow-up. Please restate the product and constraints.",
+                    f"Session state exceeded the maximum retained turn count of {MAX_STATE_TURNS}.",
+                ),
+            )
+
+        active_filters: dict[str, str] = {}
+        if context_dependent and not product_switched:
+            active_filters.update(state.active_filters)
+        active_filters.update(explicit_filters)
+
+        product_name = explicit_product or state.product_name or (matched_table.replace("_", " ") if matched_table else None)
+        resolved_prompt = _contextual_rewrite(internal_prompt, product_name, state, active_filters, context_dependent, explicit_product)
+        analytics_prompt = resolved_prompt if context_dependent else (original_prompt or internal_prompt)
+        return _ContextResolution(
+            internal_prompt=resolved_prompt,
+            analytics_prompt=analytics_prompt,
+            product_table=matched_table,
+            product_name=product_name,
+            active_filters=active_filters,
+            context_dependent=context_dependent,
+            context_used=context_used,
+            product_switched=product_switched,
+        )
+
+    def _updated_conversation_state(
+        self,
+        previous_state: ConversationState,
+        language_info: PromptLanguageInfo,
+        result: Mapping[str, Any],
+        trace: Mapping[str, Any],
+        resolution: _ContextResolution,
+    ) -> ConversationState:
+        if trace.get("state_reset"):
+            return ConversationState.reset()
+        table = _optional_state_str(trace.get("table")) or resolution.product_table or previous_state.matched_table
+        product_name = _optional_state_str(trace.get("product_name")) or resolution.product_name or previous_state.product_name
+        route = _optional_state_str(trace.get("route")) or previous_state.previous_route
+        result_summary = _compact_summary(_extract_result_text(result) or _optional_state_str(trace.get("answer")) or _optional_state_str(trace.get("failure_category")))
+        evidence_snippets = tuple(str(item) for item in trace.get("evidence_snippets") or ())
+        evidence_ids = tuple(str(item) for item in trace.get("evidence_ids") or ())
+        chart_spec = _chart_spec_from_trace(trace)
+        numeric_result = _extract_numeric_result(_extract_result_text(result) or "")
+        filters = dict(resolution.active_filters)
+        if trace.get("failure_category") and not resolution.context_used:
+            filters = dict(previous_state.active_filters)
+        return ConversationState(
+            product_name=product_name,
+            matched_table=table,
+            active_filters=filters,
+            previous_route=route,
+            previous_query=language_info.internal_prompt,
+            previous_result_summary=result_summary,
+            previous_numeric_result=numeric_result if numeric_result is not None else previous_state.previous_numeric_result,
+            previous_chart_spec=chart_spec or previous_state.previous_chart_spec,
+            evidence_ids=evidence_ids[:8],
+            evidence_summary=_compact_summary(" | ".join(evidence_snippets[:3])) if evidence_snippets else previous_state.evidence_summary,
+            response_language=language_info.original_language,
+            turn_count=min(previous_state.turn_count + 1, MAX_STATE_TURNS + 1),
+        )
 
     def _prepare_prompt(self, prompt: str) -> PromptLanguageInfo:
         language, translation = self.language_agent.detect_and_translate_text(prompt)
@@ -309,12 +601,301 @@ class ReviewOrchestrator:
         return build_langchain_tools(self.settings, self.provider, conn, table, orchestrator=self)
 
 
+def _optional_state_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _optional_state_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _state_trace(language_info: PromptLanguageInfo, *, internal_prompt: str, route: str | None) -> dict[str, Any]:
+    return {
+        "prompt": language_info.original_prompt,
+        "original_prompt": language_info.original_prompt,
+        "original_language": language_info.original_language,
+        "internal_prompt": internal_prompt,
+        "analytics_prompt": internal_prompt,
+        "product_name": None,
+        "date_range": _extract_date_range(internal_prompt),
+        "table": None,
+        "retrieval_attempted": False,
+        "retrieval_error": None,
+        "route": route,
+        "sql": None,
+        "evidence_ids": [],
+        "evidence_snippets": [],
+        "chart_path": None,
+        "chart_type": None,
+        "failure_category": None,
+        "failure_reason": None,
+    }
+
+
+def _is_reset_prompt(prompt: str) -> bool:
+    normalized = re.sub(r"\s+", " ", prompt.strip().lower().rstrip(".!?"))
+    return normalized in {
+        "reset",
+        "reset context",
+        "reset conversation",
+        "clear context",
+        "clear conversation",
+        "start over",
+    }
+
+
+def _is_stateful_followup_prompt(prompt: str) -> bool:
+    lower = prompt.lower()
+    if _is_context_dependent_prompt(prompt):
+        return True
+    return bool(
+        re.search(r"\b(that|those|same|now|earlier|previous|only|instead|also)\b", lower)
+        or re.search(r"\bwhat about\b", lower)
+        or re.search(r"\bshow that\b", lower)
+        or re.search(r"\bwhy do (?:users|reviewers|customers) say that\b", lower)
+        or re.search(r"\bcompare that\b", lower)
+    )
+
+
+
+
+
+
+def _is_omitted_product_review_prompt(prompt: str) -> bool:
+    lower = prompt.lower()
+    if not _lacks_product_context(lower):
+        return False
+    return bool(
+        re.search(r"\b(how many|count|number|total|average|avg|mean|rating|ratings?|reviews?)\b", lower)
+        or re.search(r"\b(show|plot|chart|graph|display|trend|distribution)\b", lower)
+        or re.search(r"\b(why|explain|summarize|evidence|users|reviewers|customers|complaints?)\b", lower)
+    )
+def _is_filter_only_product_candidate(product_name: str) -> bool:
+    tokens = set(_tokens(product_name))
+    if not tokens:
+        return True
+    filter_tokens = {
+        "about",
+        "only",
+        "same",
+        "negative",
+        "positive",
+        "neutral",
+        "review",
+        "reviews",
+        "rating",
+        "ratings",
+        "star",
+        "stars",
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+    }
+    return tokens.issubset(filter_tokens)
+
+
+def _extract_prompt_filters(prompt: str) -> dict[str, str]:
+    filters: dict[str, str] = {}
+    rating = _extract_rating_filter(prompt)
+    if rating is not None:
+        filters["rating"] = str(rating)
+    sentiment = _extract_sentiment_filter(prompt)
+    if sentiment:
+        filters["sentiment"] = sentiment
+    date_range = _extract_date_range(prompt)
+    if date_range:
+        filters["date_range"] = date_range
+    topic = _extract_topic_filter(prompt)
+    if topic:
+        filters["topic"] = topic
+    return filters
+
+
+def _extract_rating_filter(prompt: str) -> int | None:
+    lower = prompt.lower()
+    word_to_rating = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5}
+    for word, value in word_to_rating.items():
+        if re.search(rf"\b{word}\s*[- ]?star\b", lower):
+            return value
+    match = re.search(r"\b([1-5])\s*[- ]?star\b", lower)
+    if match:
+        return int(match.group(1))
+    match = re.search(r"\brating\s*(?:=|is|of)?\s*([1-5])\b", lower)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def _extract_sentiment_filter(prompt: str) -> str | None:
+    lower = prompt.lower()
+    if re.search(r"\bnegative\b", lower):
+        return "negative"
+    if re.search(r"\bpositive\b", lower):
+        return "positive"
+    if re.search(r"\bneutral\b", lower):
+        return "neutral"
+    return None
+
+
+def _extract_topic_filter(prompt: str) -> str | None:
+    lower = prompt.lower()
+    match = re.search(r"\btopic\s+(?:is|=|about)?\s*([a-z][a-z0-9 _-]{2,30})", lower)
+    if not match:
+        return None
+    return re.sub(r"\s+", " ", match.group(1)).strip(" .?!")
+
+
+def _contextual_rewrite(
+    prompt: str,
+    product_name: str | None,
+    state: ConversationState,
+    active_filters: Mapping[str, str],
+    context_dependent: bool,
+    explicit_product: str | None,
+) -> str:
+    resolved = prompt.strip()
+    lower = resolved.lower()
+    if context_dependent and _asks_time_followup(lower) and product_name:
+        resolved = f"Show average rating by date for {product_name}"
+    elif context_dependent and _asks_same_for_rating(lower) and product_name:
+        resolved = f"{state.previous_query or 'Analyze reviews'} for {product_name}"
+    elif context_dependent and _asks_semantic_followup(lower) and product_name:
+        basis = state.evidence_summary or state.previous_result_summary or "the prior review evidence"
+        resolved = f"Why do reviewers say this about {product_name}: {basis}"
+    elif context_dependent and _asks_comparison_followup(lower) and product_name:
+        basis = state.previous_result_summary or "the stored prior result"
+        resolved = f"Compare the current review-analysis request for {product_name} with this stored result: {basis}"
+    elif product_name and not explicit_product and _lacks_product_context(lower):
+        resolved = f"{resolved} for {product_name}"
+
+    filter_phrase = _filters_to_prompt_phrase(active_filters)
+    if filter_phrase and filter_phrase.lower() not in resolved.lower():
+        resolved = f"{resolved} with {filter_phrase}"
+    context_bits = []
+    if context_dependent and state.previous_route:
+        context_bits.append(f"route={state.previous_route}")
+    if context_dependent and state.previous_result_summary:
+        context_bits.append(f"result={state.previous_result_summary}")
+    if context_dependent and state.evidence_summary and _asks_semantic_followup(lower):
+        context_bits.append(f"evidence={state.evidence_summary}")
+    if context_bits:
+        resolved = f"{resolved}. Context summary: {'; '.join(context_bits)}"
+    return resolved
+
+
+def _asks_time_followup(lower_prompt: str) -> bool:
+    return bool(re.search(r"\b(show|plot|chart|graph|display)\b", lower_prompt) and re.search(r"\b(month|date|time|timeline|trend)\b", lower_prompt))
+
+
+def _asks_same_for_rating(lower_prompt: str) -> bool:
+    return bool(re.search(r"\b(same|now)\b", lower_prompt) and _extract_rating_filter(lower_prompt) is not None)
+
+
+def _asks_semantic_followup(lower_prompt: str) -> bool:
+    return bool(re.search(r"\bwhy\b", lower_prompt) and re.search(r"\b(that|this|so)\b", lower_prompt))
+
+
+def _asks_comparison_followup(lower_prompt: str) -> bool:
+    return "compare that" in lower_prompt or "compare this" in lower_prompt
+
+
+def _lacks_product_context(lower_prompt: str) -> bool:
+    return not re.search(r"\b(for|about|of)\s+[a-z0-9][a-z0-9 _-]+", lower_prompt)
+
+
+def _filters_to_prompt_phrase(filters: Mapping[str, str]) -> str:
+    parts = []
+    if filters.get("sentiment"):
+        parts.append(f"{filters['sentiment']} reviews")
+    if filters.get("rating"):
+        parts.append(f"rating {filters['rating']} reviews")
+    if filters.get("date_range"):
+        parts.append(f"date range {filters['date_range']}")
+    if filters.get("topic"):
+        parts.append(f"topic {filters['topic']}")
+    return " and ".join(parts)
+
+
+def _chart_spec_from_trace(trace: Mapping[str, Any]) -> dict[str, str] | None:
+    chart_type = _optional_state_str(trace.get("chart_type"))
+    group_by = _optional_state_str(trace.get("chart_group_by") or trace.get("chart_grouping"))
+    aggregation = _optional_state_str(trace.get("chart_aggregation"))
+    if not any((chart_type, group_by, aggregation)):
+        return None
+    return {
+        "chart_type": chart_type or "",
+        "group_by": group_by or "",
+        "aggregation": aggregation or "",
+    }
+
+
+def _extract_result_text(result: Mapping[str, Any]) -> str:
+    return " ".join(str(result.get(key) or "") for key in ("message", "explanation", "answer")).strip()
+
+
+def _compact_summary(text: str | None, *, limit: int = 360) -> str | None:
+    if not text:
+        return None
+    compact = re.sub(r"\s+", " ", str(text)).strip()
+    if len(compact) <= limit:
+        return compact
+    return compact[: limit - 3].rstrip() + "..."
+
+
+def _extract_numeric_result(text: str) -> float | None:
+    match = re.search(r"\b(\d+(?:\.\d+)?)\b", text)
+    if not match:
+        return None
+    try:
+        return float(match.group(1))
+    except ValueError:
+        return None
+
+
+def _where_clause(prompt: str) -> str:
+    clauses = []
+    date_clause = _date_where_clause_body(prompt)
+    if date_clause:
+        clauses.append(date_clause)
+    rating = _extract_rating_filter(prompt)
+    if rating is not None:
+        clauses.append(f"CAST(rating AS REAL) = {rating}")
+    sentiment = _extract_sentiment_filter(prompt)
+    if sentiment in {"negative", "positive", "neutral"}:
+        clauses.append(f"LOWER(semantic_tags) LIKE '%{sentiment}%'")
+    topic = _extract_topic_filter(prompt)
+    if topic:
+        escaped = topic.replace("'", "''")
+        clauses.append(f"LOWER(topic) LIKE '%{escaped.lower()}%'")
+    return " WHERE " + " AND ".join(clauses) if clauses else ""
+
+
+def _date_where_clause_body(prompt: str) -> str:
+    date_range = _extract_date_range(prompt)
+    if not date_range:
+        return ""
+    if ".." in date_range:
+        start_date, end_date = date_range.split("..", 1)
+        return f"date >= '{start_date}' AND date <= '{end_date}'"
+    return f"date = '{date_range}'"
+
+
 def _deterministic_direct_sql(table: str, prompt: str) -> str:
     lower = prompt.lower()
-    where_clause = _date_where_clause(prompt)
-    if "average" in lower or "avg" in lower:
+    where_clause = _where_clause(prompt)
+    if "average" in lower or "avg" in lower or "mean" in lower:
         return f"SELECT AVG(CAST(rating AS REAL)) AS avg_rating FROM {table}{where_clause}"
-    elif "how many" in lower or "count" in lower or "number" in lower:
+    elif "how many" in lower or "count" in lower or "number" in lower or "total" in lower:
         return f"SELECT COUNT(*) AS review_count FROM {table}{where_clause}"
     return f"SELECT COUNT(*) AS review_count FROM {table}{where_clause}"
 
@@ -562,13 +1143,8 @@ def _extract_date_range(prompt: str) -> str | None:
 
 
 def _date_where_clause(prompt: str) -> str:
-    date_range = _extract_date_range(prompt)
-    if not date_range:
-        return ""
-    if ".." in date_range:
-        start_date, end_date = date_range.split("..", 1)
-        return f" WHERE date >= '{start_date}' AND date <= '{end_date}'"
-    return f" WHERE date = '{date_range}'"
+    body = _date_where_clause_body(prompt)
+    return f" WHERE {body}" if body else ""
 
 
 def _route_prompt(prompt: str) -> str:

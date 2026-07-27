@@ -45,7 +45,7 @@ class AnalyticsAgent:
                 "failure_reason": "No supported analytics field, grouping, or aggregation was specified.",
             }
         spec = self._build_spec(prompt)
-        sql = build_aggregate_sql(table, spec)
+        sql = build_aggregate_sql(table, spec, prompt=prompt)
         _, rows = execute_validated_select(conn, sql, allowed_tables=[table], allowed_columns=REVIEW_COLUMNS)
         image_path = render_chart(spec, rows, self.settings.output_dir, stem=_chart_stem(prompt))
         image_b64 = _encode_file(image_path)
@@ -75,14 +75,76 @@ class AnalyticsAgent:
             return _fallback_spec(prompt)
 
 
-def build_aggregate_sql(table: str, spec: ChartSpec) -> str:
+def build_aggregate_sql(table: str, spec: ChartSpec, *, prompt: str = "") -> str:
     x_field = validate_identifier(spec.group_by or spec.x_field)
+    where_clause = _analytics_where_clause(prompt)
     if spec.aggregation == "count":
-        return f"SELECT {x_field}, COUNT(*) AS value FROM {table} GROUP BY {x_field} ORDER BY {x_field}"
+        return f"SELECT {x_field}, COUNT(*) AS value FROM {table}{where_clause} GROUP BY {x_field} ORDER BY {x_field}"
     y_field = validate_identifier(spec.y_field or "rating")
     expression = "AVG" if spec.aggregation == "avg" else "SUM"
-    return f"SELECT {x_field}, {expression}(CAST({y_field} AS REAL)) AS value FROM {table} GROUP BY {x_field} ORDER BY {x_field}"
+    return f"SELECT {x_field}, {expression}(CAST({y_field} AS REAL)) AS value FROM {table}{where_clause} GROUP BY {x_field} ORDER BY {x_field}"
 
+
+def _analytics_where_clause(prompt: str) -> str:
+    clauses: list[str] = []
+    date_clause = _analytics_date_clause(prompt)
+    if date_clause:
+        clauses.append(date_clause)
+    rating = _analytics_rating_filter(prompt)
+    if rating is not None:
+        clauses.append(f"CAST(rating AS REAL) = {rating}")
+    sentiment = _analytics_sentiment_filter(prompt)
+    if sentiment:
+        clauses.append(f"LOWER(semantic_tags) LIKE '%{sentiment}%'")
+    topic = _analytics_topic_filter(prompt)
+    if topic:
+        escaped = topic.replace("'", "''").lower()
+        clauses.append(f"LOWER(topic) LIKE '%{escaped}%'")
+    return " WHERE " + " AND ".join(clauses) if clauses else ""
+
+
+def _analytics_rating_filter(prompt: str) -> int | None:
+    lower = prompt.lower()
+    word_to_rating = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5}
+    for word, value in word_to_rating.items():
+        if re.search(rf"\b{word}\s*[- ]?star\b", lower):
+            return value
+    match = re.search(r"\b([1-5])\s*[- ]?star\b", lower)
+    if match:
+        return int(match.group(1))
+    match = re.search(r"\brating\s*(?:=|is|of)?\s*([1-5])\b", lower)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def _analytics_sentiment_filter(prompt: str) -> str | None:
+    lower = prompt.lower()
+    for sentiment in ("negative", "positive", "neutral"):
+        if re.search(rf"\b{sentiment}\b", lower):
+            return sentiment
+    return None
+
+
+def _analytics_topic_filter(prompt: str) -> str | None:
+    match = re.search(r"\btopic\s+(?:is|=|about)?\s*([a-z][a-z0-9 _-]{2,30})", prompt.lower())
+    if not match:
+        return None
+    return re.sub(r"\s+", " ", match.group(1)).strip(" .?!")
+
+
+def _analytics_date_clause(prompt: str) -> str:
+    date_pattern = r"\d{4}-\d{2}-\d{2}"
+    between_match = re.search(rf"\bbetween\s+({date_pattern})\s+and\s+({date_pattern})\b", prompt, flags=re.IGNORECASE)
+    if between_match:
+        return f"date >= '{between_match.group(1)}' AND date <= '{between_match.group(2)}'"
+    from_match = re.search(rf"\bfrom\s+({date_pattern})\s+to\s+({date_pattern})\b", prompt, flags=re.IGNORECASE)
+    if from_match:
+        return f"date >= '{from_match.group(1)}' AND date <= '{from_match.group(2)}'"
+    on_match = re.search(rf"\bon\s+({date_pattern})\b", prompt, flags=re.IGNORECASE)
+    if on_match:
+        return f"date = '{on_match.group(1)}'"
+    return ""
 
 def _chart_spec_prompt(prompt: str) -> str:
     return (
@@ -304,7 +366,7 @@ def _mentions_rating_distribution(prompt_lower: str) -> bool:
 
 def _mentions_time_trend(prompt_lower: str) -> bool:
     return bool(
-        any(word in prompt_lower for word in ("trend", "over time", "timeline", "time series"))
+        any(word in prompt_lower for word in ("trend", "over time", "timeline", "time series", "by month", "monthly"))
         or (re.search(r"\bdate\b", prompt_lower) and any(word in prompt_lower for word in ("average", "avg", "by", "trend")))
     )
 

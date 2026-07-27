@@ -21,12 +21,35 @@ class LanguageAgent:
         return language.strip(), translation.strip()
 
     def translate_text(self, text: str, target_language: str) -> str:
+        trace = self.translate_text_with_trace(text, target_language)
+        return str(trace["translation"])
+
+    def translate_text_with_trace(
+        self,
+        text: str,
+        target_language: str,
+        *,
+        fallback_to_source: bool = True,
+    ) -> dict[str, object]:
         response = self.provider.generate(
             _translate_prompt(text, target_language),
             purpose="translation",
-        ).content.strip()
-        translation = _extract_line(response, "TRANSLATION") or response
-        return translation.strip() or text
+        )
+        raw = response.content.strip()
+        parsed = _extract_line(raw, "TRANSLATION")
+        translation = (parsed or raw).strip()
+        parser_status = "translation_line" if parsed is not None else "raw_response_without_translation_prefix"
+        if not translation:
+            parser_status = "empty_response"
+            if fallback_to_source:
+                translation = text
+        return {
+            "translation": translation,
+            "raw_response": raw,
+            "parser_status": parser_status,
+            "model": response.model,
+            "usage": response.usage,
+        }
 
     def enrich_table(self, conn: sqlite3.Connection, table_name: str) -> int:
         table = validate_identifier(table_name)
@@ -56,7 +79,9 @@ def _language_prompt(text: str) -> str:
 
 def _translate_prompt(text: str, target_language: str) -> str:
     return (
-        f"Translate the following text to {target_language}.\n"
+        f"Translate only the following text to {target_language}.\n"
+        "Preserve praise, criticism, uncertainty, negation, intensity, quantities, and product references. "
+        "Do not summarize, explain, classify, add topic labels, add semantic tags, or add interpretation.\n"
         "Return one line in this exact format:\n"
         "TRANSLATION: <translated text>\n"
         f"Text:\n{text}"

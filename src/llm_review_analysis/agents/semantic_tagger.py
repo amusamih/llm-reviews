@@ -4,9 +4,25 @@ import json
 import re
 from dataclasses import dataclass
 import sqlite3
+from typing import Any
 
 from llm_review_analysis.db.schema import validate_identifier
 from llm_review_analysis.llm import LLMProvider
+
+from .analysis_text import analysis_text_from_row
+
+
+class SemanticTaggingError(RuntimeError):
+    def __init__(self, message: str, *, raw_responses: tuple[str, ...] = ()) -> None:
+        super().__init__(message)
+        self.raw_responses = raw_responses
+
+
+@dataclass(frozen=True)
+class SemanticTaggingFailure:
+    review_id: int | None
+    reason: str
+    raw_responses: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -35,25 +51,44 @@ class SemanticTagger:
         *,
         provider: LLMProvider | None = None,
         use_provider: bool = False,
+        max_retries: int = 2,
     ) -> None:
         self.taxonomy = taxonomy or SemanticTaxonomy()
         self.provider = provider
         self.use_provider = use_provider
+        self.max_retries = max(0, int(max_retries))
+        self.failures: list[SemanticTaggingFailure] = []
 
     def tag_text(self, text: str) -> list[str]:
-        if self.use_provider and self.provider is not None:
-            provider_tags = self._tag_text_with_provider(text)
-            if provider_tags is not None:
-                return provider_tags
+        if self.use_provider:
+            if self.provider is None:
+                raise SemanticTaggingError("Provider-backed semantic tagging was requested without a provider.")
+            return self._tag_text_with_provider(text)
         return self._deterministic_tags(text)
 
-    def _tag_text_with_provider(self, text: str) -> list[str] | None:
+    def tag_text_with_trace(self, text: str) -> dict[str, Any]:
         prompt = _semantic_tagging_prompt(text, self.taxonomy.all_labels)
-        try:
+        raw_responses: list[str] = []
+        for attempt in range(self.max_retries + 1):
             response = self.provider.generate(prompt, purpose="semantic_tagging", response_format="json")
-        except Exception:  # noqa: BLE001 - semantic enrichment falls back to the offline-safe tagger.
-            return None
-        return _parse_semantic_tags(response.content, self.taxonomy.all_labels)
+            raw = response.content.strip()
+            raw_responses.append(raw)
+            tags = _parse_semantic_tags(raw, self.taxonomy.all_labels)
+            if tags is not None:
+                return {
+                    "semantic_tags": tags,
+                    "attempts": attempt + 1,
+                    "raw_responses": tuple(raw_responses),
+                    "model": response.model,
+                    "usage": response.usage,
+                }
+        raise SemanticTaggingError(
+            "Semantic tagging failed after retries because the model did not return valid allowed labels.",
+            raw_responses=tuple(raw_responses),
+        )
+
+    def _tag_text_with_provider(self, text: str) -> list[str]:
+        return list(self.tag_text_with_trace(text)["semantic_tags"])
 
     def _deterministic_tags(self, text: str) -> list[str]:
         lower = text.lower()
@@ -78,29 +113,48 @@ class SemanticTagger:
 
     def enrich_table(self, conn: sqlite3.Connection, table_name: str) -> int:
         table = validate_identifier(table_name)
-        rows = conn.execute(f"SELECT id, title, content, translated_review FROM {table}").fetchall()
-        updates = []
+        rows = conn.execute(f"SELECT id, title, content, translated_review, language FROM {table}").fetchall()
+        updates: list[tuple[str | None, int]] = []
+        failures: list[SemanticTaggingFailure] = []
         for row in rows:
-            text = " ".join(str(row[col] or "") for col in ("title", "content", "translated_review"))
-            tags = ", ".join(self.tag_text(text))
-            updates.append((tags, int(row["id"])))
+            review_id = int(row["id"])
+            text = analysis_text_from_row(row)
+            try:
+                tags = ", ".join(self.tag_text(text))
+                updates.append((tags, review_id))
+            except SemanticTaggingError as exc:
+                failures.append(SemanticTaggingFailure(review_id, str(exc), exc.raw_responses))
+                updates.append((None, review_id))
         if updates:
             conn.executemany(f"UPDATE {table} SET semantic_tags = ? WHERE id = ?", updates)
             conn.commit()
+        self.failures.extend(failures)
+        if failures:
+            raise SemanticTaggingError(f"Semantic tagging failed for {len(failures)} review(s).")
         return len(updates)
 
 
 def _semantic_tagging_prompt(text: str, allowed_labels: tuple[str, ...]) -> str:
-    labels = "\n".join(f"- {label}" for label in allowed_labels)
+    definitions = {
+        "positive": "clear satisfaction, praise, or favorable evaluation",
+        "negative": "clear dissatisfaction, complaint, or unfavorable evaluation",
+        "helpful": "specific information that can help a buyer understand use, quality, or trade-offs",
+        "vague": "generic, unclear, or too little detail to support a buyer decision",
+        "no justification": "sentiment or judgment is given without supporting explanation",
+        "contradictory": "internally mixed or conflicting positive and negative claims",
+        "duplicate": "appears copied, repeated, templated, or substantially reused",
+        "potentially misleading": "may misrepresent the product, discuss the wrong product, or rely on unrealistic expectations",
+    }
+    labels = "\n".join(f"- {label}: {definitions.get(label, label)}" for label in allowed_labels)
     return (
         "Assign review-level semantic tags to the following product or service review. "
+        "The review may be written in any language. Infer the review meaning directly and apply the same "
+        "criteria regardless of the input language. Select every allowed label that applies and no labels that do not apply. "
         "Use only the allowed labels. Return JSON only in the form "
         '{"semantic_tags": ["label", "..."]}.\n\n'
-        f"Allowed labels:\n{labels}\n\n"
+        f"Allowed labels and definitions:\n{labels}\n\n"
         f"Review:\n{text}"
     )
-
-
 def _parse_semantic_tags(content: str, allowed_labels: tuple[str, ...]) -> list[str] | None:
     raw_tags: object
     try:
@@ -137,9 +191,20 @@ def _parse_semantic_tags(content: str, allowed_labels: tuple[str, ...]) -> list[
 def _normalize_tags(candidates: list[object], allowed_labels: tuple[str, ...]) -> list[str]:
     allowed = {label.lower(): label for label in allowed_labels}
     aliases = {
+        "positive sentiment": "positive",
+        "negative sentiment": "negative",
+        "informative": "helpful",
+        "specific": "helpful",
+        "unclear": "vague",
+        "generic": "vague",
         "nojustification": "no justification",
         "no justification": "no justification",
         "not justified": "no justification",
+        "without justification": "no justification",
+        "contradiction": "contradictory",
+        "conflicting": "contradictory",
+        "copied": "duplicate",
+        "repeated": "duplicate",
         "misleading": "potentially misleading",
         "potentially misleading": "potentially misleading",
     }
