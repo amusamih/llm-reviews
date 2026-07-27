@@ -64,7 +64,13 @@ SEMANTIC_RETRIEVAL_BACKEND=lexical
 - `HF_QWEN_ENDPOINT_URL`
 - `FLASK_SECRET_KEY`
 
-Set `FLASK_SECRET_KEY` to a strong random value for persistent sessions or any deployed use.
+`FLASK_SECRET_KEY` may remain blank for local development. In that case, the Flask demo generates a random ephemeral secret for the current process, so browser sessions are invalidated when the server restarts. Set a strong private value for persistent sessions or any deployed use. Public placeholder values are treated as unset locally and rejected in production-like modes.
+
+One way to generate a private value is:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
 
 ## Workflow Notes
 
@@ -82,9 +88,9 @@ python -m app.server
 
 The local server loads repository-root `.env` values before reading settings. It uses the configured `REVIEWS_DB_PATH`, which defaults to `data/reviews.db`. Populate a local review database with your own data or the provided helper scripts before expecting product-specific answers. The demo is available at `http://127.0.0.1:5000/` by default.
 
-The Flask interface keeps only compact dialogue state in the browser session cookie, such as the active product table, filters, previous route, compact summaries, chart context, and evidence references. It does not store API credentials, database connections, raw review corpora, vector stores, Base64 chart payloads, or unrestricted conversation history. Use the reset endpoint or a reset prompt to clear the current browser session state.
+The Flask interface keeps only bounded, compact dialogue state per browser session cookie, such as the active product table, filters, previous route, compact summaries, chart context, and evidence references. It does not store API credentials, database connections, raw review corpora, vector stores, Base64 chart payloads, large objects, or unrestricted conversation history. Use the reset endpoint or a reset prompt to clear the current browser session state.
 
-The Flask server is not a production deployment. If `FLASK_SECRET_KEY` is not set during local development, the app generates an ephemeral process-local secret, which invalidates sessions after restart. Production-like modes require `FLASK_SECRET_KEY`. Live LLM calls remain disabled unless provider credentials are configured locally and live execution is explicitly enabled for the relevant run.
+The Flask server is a local research/demo interface rather than a production deployment. Production-like modes require a real `FLASK_SECRET_KEY` and reject blank or public placeholder values. Live LLM calls remain disabled unless provider credentials are configured locally and live execution is explicitly enabled for the relevant run.
 
 ## Running Offline Tests
 

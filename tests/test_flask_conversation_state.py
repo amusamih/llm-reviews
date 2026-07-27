@@ -7,10 +7,21 @@ from typing import Any, Mapping
 import pytest
 
 from app.server import (
+    MAX_CHART_SPEC_FIELDS,
+    MAX_CHART_SPEC_KEY_LENGTH,
+    MAX_CHART_SPEC_VALUE_LENGTH,
+    MAX_EVIDENCE_ID_LENGTH,
+    MAX_EVIDENCE_IDS,
+    MAX_FILTER_KEY_LENGTH,
+    MAX_FILTER_VALUE_LENGTH,
+    MAX_SESSION_FILTERS,
+    MAX_SUMMARY_LENGTH,
+    PLACEHOLDER_SECRET_VALUES,
     SESSION_STATE_KEY,
     create_app,
     load_repository_dotenv,
     resolve_flask_secret_key,
+    serialize_conversation_state,
 )
 from llm_review_analysis.agents import ConversationState, ReviewOrchestrator
 from llm_review_analysis.db.schema import ensure_review_table
@@ -42,9 +53,41 @@ def test_local_development_secret_is_ephemeral_and_not_former_fixed_value():
     assert first != "llm-review-analysis-dev-secret"
 
 
-def test_missing_flask_secret_fails_in_production_mode():
+def test_blank_and_whitespace_flask_secret_use_ephemeral_development_secret():
+    blank = resolve_flask_secret_key({"FLASK_SECRET_KEY": "", "APP_ENV": "development"})
+    whitespace = resolve_flask_secret_key({"FLASK_SECRET_KEY": "   ", "APP_ENV": "development"})
+
+    assert blank
+    assert whitespace
+    assert blank != whitespace
+
+
+def test_public_placeholder_flask_secrets_are_unset_in_development():
+    for placeholder in PLACEHOLDER_SECRET_VALUES:
+        generated = resolve_flask_secret_key({"FLASK_SECRET_KEY": f"  {placeholder.upper()}  ", "APP_ENV": "development"})
+
+        assert generated
+        assert generated.lower() != placeholder
+
+
+def test_generated_flask_secret_is_not_logged(caplog):
+    generated = resolve_flask_secret_key({"APP_ENV": "development"})
+
+    assert generated
+    assert generated not in caplog.text
+
+
+def test_missing_blank_or_placeholder_flask_secret_fails_in_production_mode():
     with pytest.raises(RuntimeError, match="FLASK_SECRET_KEY"):
         resolve_flask_secret_key({"APP_ENV": "production"})
+    with pytest.raises(RuntimeError, match="FLASK_SECRET_KEY"):
+        resolve_flask_secret_key({"APP_ENV": "production", "FLASK_SECRET_KEY": "   "})
+    with pytest.raises(RuntimeError, match="FLASK_SECRET_KEY"):
+        resolve_flask_secret_key({"APP_ENV": "production", "FLASK_SECRET_KEY": "change-me"})
+
+
+def test_real_flask_secret_is_accepted_in_production_mode():
+    assert resolve_flask_secret_key({"APP_ENV": "production", "FLASK_SECRET_KEY": "real-private-session-secret"}) == "real-private-session-secret"
 
 
 def test_flask_cookie_settings_are_directly_configured(settings, monkeypatch):
@@ -54,6 +97,14 @@ def test_flask_cookie_settings_are_directly_configured(settings, monkeypatch):
     assert app.config["SESSION_COOKIE_HTTPONLY"] is True
     assert app.config["SESSION_COOKIE_SAMESITE"] == "Lax"
     assert app.config["SESSION_COOKIE_SECURE"] is False
+
+
+def test_flask_cookie_secure_is_enabled_for_production(settings, monkeypatch):
+    monkeypatch.setenv("FLASK_SECRET_KEY", "unit-secret")
+    monkeypatch.setenv("APP_ENV", "production")
+    app = create_app(settings=settings, provider=object(), orchestrator=FakeStatefulOrchestrator())
+
+    assert app.config["SESSION_COOKIE_SECURE"] is True
 
 
 def test_flask_chat_creates_compact_conversation_state(settings, monkeypatch):
@@ -167,6 +218,100 @@ def test_flask_drops_forged_or_stale_matched_table_from_session(settings, monkey
     assert response.status_code == 200
     assert orchestrator.calls[-1]["state"]["matched_table"] is None
     assert orchestrator.calls[-1]["state"]["product_name"] is None
+
+
+def test_flask_drops_session_state_with_invalid_matched_table_identifier(settings, monkeypatch):
+    monkeypatch.setenv("FLASK_SECRET_KEY", "unit-secret")
+    orchestrator = FakeStatefulOrchestrator()
+    app = create_app(settings=settings, provider=object(), orchestrator=orchestrator)
+    client = app.test_client()
+    with client.session_transaction() as session:
+        session[SESSION_STATE_KEY] = {"product_name": "sample product", "matched_table": "sample;drop"}
+
+    response = client.post("/chat", json={"prompt": "Now do the same for five-star reviews."})
+
+    assert response.status_code == 200
+    assert orchestrator.calls[-1]["state"]["matched_table"] is None
+
+
+def test_session_serializer_bounds_filters_and_discards_nested_values():
+    state = {
+        "active_filters": {
+            **{f"filter_{index}": "x" * (MAX_FILTER_VALUE_LENGTH + 20) for index in range(MAX_SESSION_FILTERS + 5)},
+            "nested": {"not": "allowed"},
+        }
+    }
+
+    serialized = serialize_conversation_state(state)
+
+    assert len(serialized["active_filters"]) == MAX_SESSION_FILTERS
+    assert all(len(key) <= MAX_FILTER_KEY_LENGTH for key in serialized["active_filters"])
+    assert all(len(value) <= MAX_FILTER_VALUE_LENGTH for value in serialized["active_filters"].values())
+    assert "nested" not in serialized["active_filters"]
+
+
+def test_session_serializer_bounds_evidence_ids_and_discards_nested_values():
+    state = {"evidence_ids": ["e" * (MAX_EVIDENCE_ID_LENGTH + 20) for _ in range(MAX_EVIDENCE_IDS + 5)] + [{"bad": "id"}]}
+
+    serialized = serialize_conversation_state(state)
+
+    assert len(serialized["evidence_ids"]) == MAX_EVIDENCE_IDS
+    assert all(len(value) <= MAX_EVIDENCE_ID_LENGTH for value in serialized["evidence_ids"])
+
+
+def test_session_serializer_bounds_summaries():
+    state = {
+        "previous_result_summary": "r" * (MAX_SUMMARY_LENGTH + 20),
+        "evidence_summary": "e" * (MAX_SUMMARY_LENGTH + 20),
+    }
+
+    serialized = serialize_conversation_state(state)
+
+    assert len(serialized["previous_result_summary"]) == MAX_SUMMARY_LENGTH
+    assert len(serialized["evidence_summary"]) == MAX_SUMMARY_LENGTH
+
+
+def test_session_serializer_bounds_chart_spec_and_discards_nested_values():
+    raw_chart_spec = {
+        "k" * (MAX_CHART_SPEC_KEY_LENGTH + 20): "kept",
+        "nested": ["not", "allowed"],
+    }
+    raw_chart_spec.update(
+        {f"field_{index}": "x" * (MAX_CHART_SPEC_VALUE_LENGTH + 20) for index in range(MAX_CHART_SPEC_FIELDS + 5)}
+    )
+    state = {
+        "previous_chart_spec": raw_chart_spec
+    }
+
+    serialized = serialize_conversation_state(state)
+
+    assert serialized["previous_chart_spec"] is not None
+    assert len(serialized["previous_chart_spec"]) == MAX_CHART_SPEC_FIELDS
+    assert all(len(key) <= MAX_CHART_SPEC_KEY_LENGTH for key in serialized["previous_chart_spec"])
+    assert all(len(value) <= MAX_CHART_SPEC_VALUE_LENGTH for value in serialized["previous_chart_spec"].values())
+    assert "nested" not in serialized["previous_chart_spec"]
+
+
+def test_session_serializer_round_trips_normal_compact_state():
+    state = ConversationState(
+        product_name="sample product",
+        matched_table="sample_product",
+        active_filters={"rating": "5"},
+        previous_route="DIRECT_SQL",
+        previous_query="How many five-star reviews?",
+        previous_result_summary="There are two five-star reviews.",
+        previous_numeric_result=2,
+        previous_chart_spec={"chart_type": "bar", "group_by": "rating"},
+        evidence_ids=("1", "2"),
+        evidence_summary="review 1 and review 2",
+        response_language="en",
+        turn_count=3,
+    )
+
+    serialized = serialize_conversation_state(state)
+    restored = ConversationState.from_mapping(serialized)
+
+    assert restored == state
 
 
 def test_programmatic_stateless_answer_path_remains_available():
