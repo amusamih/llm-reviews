@@ -28,9 +28,11 @@ from evaluation.live_pilot import (
     DEFAULT_PROVIDER,
     DEFAULT_REVIEWS_PATH,
     UsageTrackingProvider,
+    add_live_confirmation_args,
     _git_commit_sha,
     _install_process_environment,
     _prompt_had_api_failure,
+    require_live_confirmation,
     _scrubbed_provider_config,
     _token_summary,
     _with_live_usage,
@@ -651,7 +653,11 @@ def main() -> None:
     parser.add_argument("--max-api-failures", type=int, default=3)
     parser.add_argument("--evidence-id", default=DEFAULT_EVIDENCE_ID)
     parser.add_argument("--modes", nargs="*", default=None, help="Mode names, comma-separated names, or all.")
+    add_live_confirmation_args(parser)
     args = parser.parse_args()
+
+    if not require_live_confirmation(parser, args):
+        return
 
     artifacts = run_live_baseline_ablation(
         prompts_path=args.prompts,

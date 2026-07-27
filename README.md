@@ -62,12 +62,29 @@ SEMANTIC_RETRIEVAL_BACKEND=lexical
 - `HUGGINGFACEHUB_API_TOKEN`
 - `HF_LLAMA_ENDPOINT_URL`
 - `HF_QWEN_ENDPOINT_URL`
+- `FLASK_SECRET_KEY`
+
+Set `FLASK_SECRET_KEY` to a strong random value before using the Flask demo outside local development.
 
 ## Workflow Notes
 
 Review records are stored in product- or service-specific SQLite tables. The retrieval/load path cleans and normalizes incoming records, removes exact duplicate rows where supported, inserts the records into the matched table, and then runs enrichment in sequence: language detection and translation, topic assignment, and semantic tagging.
 
 When FAISS semantic retrieval is enabled, the semantic reasoning path builds review documents from approved table rows and approved columns. It can reuse a matching cached FAISS index and document metadata when the table content, embedding configuration, and chunking parameters are unchanged. Cache loading avoids unsafe pickle deserialization and does not require LangChain dangerous deserialization.
+
+## Local Flask Demo
+
+The repository includes a lightweight Flask interface for local research/demo use:
+
+```bash
+python -m app.server
+```
+
+The local server uses the configured `REVIEWS_DB_PATH`, which defaults to `data/reviews.db`. Populate a local review database with your own data or the provided helper scripts before expecting product-specific answers. The demo is available at `http://127.0.0.1:5000/` by default.
+
+The Flask interface keeps only compact session-scoped dialogue state, such as the active product table, filters, previous route, compact summaries, chart context, and evidence references. It does not store API credentials, database connections, raw review corpora, vector stores, Base64 chart payloads, or unrestricted conversation history. Use the reset endpoint or a reset prompt to clear the current browser session state.
+
+The Flask server is not a production deployment. Live LLM calls remain disabled unless provider credentials are configured locally and live execution is explicitly enabled for the relevant run.
 
 ## Running Offline Tests
 
@@ -118,6 +135,8 @@ The default preflight checks the four manuscript-aligned model configurations an
 python evaluation/model_interface_robustness.py --config evaluation/model_configs.json --prompts evaluation/interface_robustness_prompts.json --preflight --models gpt4o claude
 ```
 
+Legacy live runners retained for earlier bounded experiments require both `--run-live` and `--allow-live` before provider calls can start. Without both flags, they exit without setting live-call environment flags or sending prompts.
+
 ## Evaluation Scripts
 
 The benchmark runner supports offline/mock validation:
@@ -137,6 +156,16 @@ The tracked cross-model workflow prompt set is available at:
 ```text
 evaluation/interface_robustness_prompts.json
 ```
+
+The public product-generic topic vocabulary is available at:
+
+```text
+evaluation/configs/product_generic_topics.json
+```
+
+The default application configuration may use a domain-oriented illustrative topic vocabulary. The separate public 14-label product-generic vocabulary corresponds to the label set described for the held-out cross-language evaluation. The repository does not redistribute the private MARC review bodies or generated translations.
+
+The controlled component fixture at `evaluation/live_controlled_component_ablation_items.json` contains public controlled items for exercising the component-evaluation code. It is not the private final MARC dataset, not the private Samsung review artifact, and not a source of manuscript final metrics by itself.
 
 Dataset preparation utilities are available under `scripts/` and `evaluation/`. Raw downloaded datasets, generated benchmark prompt/review artifacts, and generated SQLite databases are kept out of version control by default.
 

@@ -35,9 +35,11 @@ from evaluation.live_pilot import (
     DEFAULT_PROMPTS_PATH,
     DEFAULT_REVIEWS_PATH,
     UsageTrackingProvider,
+    add_live_confirmation_args,
     _git_commit_sha,
     _install_process_environment,
     _prompt_had_api_failure,
+    require_live_confirmation,
     _scrubbed_provider_config,
     _token_summary,
     read_dotenv,
@@ -662,6 +664,7 @@ def main() -> None:
     parser.add_argument("--evidence-id", default=DEFAULT_EVIDENCE_ID)
     parser.add_argument("--dry-config-check", action="store_true", help="Validate model config/key presence without sending benchmark prompts.")
     parser.add_argument("--preflight-check", action="store_true", help="Run the no-call legacy preflight readiness check.")
+    add_live_confirmation_args(parser)
     args = parser.parse_args()
 
     if args.preflight_check:
@@ -684,6 +687,9 @@ def main() -> None:
 
     if args.dry_config_check:
         print(json.dumps(dry_config_check(config_path=args.config, model_labels=args.model_labels, semantic_backend=args.semantic_backend), indent=2, sort_keys=True))
+        return
+
+    if not require_live_confirmation(parser, args):
         return
 
     artifacts = run_live_model_substitution(

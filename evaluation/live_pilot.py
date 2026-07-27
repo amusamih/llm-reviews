@@ -51,6 +51,35 @@ SECRET_KEY_NAMES = {
     "HUGGINGFACEHUB_API_TOKEN",
     "OPENAI_API_KEY",
 }
+LIVE_CONFIRMATION_MESSAGE = (
+    "Live execution is disabled. Re-run with both --run-live and --allow-live "
+    "to enable provider calls."
+)
+
+
+def add_live_confirmation_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--run-live",
+        action="store_true",
+        help="Confirm that a live provider-backed run is intended.",
+    )
+    parser.add_argument(
+        "--allow-live",
+        action="store_true",
+        help="Acknowledge that the run may incur provider cost.",
+    )
+
+
+def live_execution_confirmed(args: argparse.Namespace) -> bool:
+    return bool(getattr(args, "run_live", False) and getattr(args, "allow_live", False))
+
+
+def require_live_confirmation(parser: argparse.ArgumentParser, args: argparse.Namespace) -> bool:
+    if live_execution_confirmed(args):
+        return True
+    parser.print_usage()
+    print(LIVE_CONFIRMATION_MESSAGE)
+    return False
 
 
 class UsageTrackingProvider:
@@ -466,7 +495,11 @@ def main() -> None:
     parser.add_argument("--max-api-failures", type=int, default=3)
     parser.add_argument("--evidence-id", default=DEFAULT_EVIDENCE_ID)
     parser.add_argument("--prompt-ids", nargs="*", default=None, help="Optional prompt IDs for a tiny targeted validation run.")
+    add_live_confirmation_args(parser)
     args = parser.parse_args()
+
+    if not require_live_confirmation(parser, args):
+        return
 
     artifacts = run_live_pilot(
         prompts_path=args.prompts,

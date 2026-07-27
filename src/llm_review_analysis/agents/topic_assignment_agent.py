@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import re
 import sqlite3
 from dataclasses import dataclass
@@ -221,3 +222,17 @@ def _normalize_topic(topic: str) -> str:
         "product reliability": "charger reliability",
     }
     return aliases.get(cleaned, cleaned)
+
+
+def load_topic_vocabulary(path: str | Path) -> list[str]:
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if isinstance(payload, list):
+        raw_topics = payload
+    elif isinstance(payload, dict):
+        raw_topics = payload.get("topics", payload.get("labels", []))
+    else:
+        raw_topics = []
+    topics = _normalize_topic_list([str(topic) for topic in raw_topics])
+    if not topics:
+        raise TopicAssignmentError(f"No topic labels were found in {path}.")
+    return topics
