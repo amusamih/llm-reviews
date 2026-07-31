@@ -78,8 +78,17 @@ class AnalyticsAgent:
 def build_aggregate_sql(table: str, spec: ChartSpec, *, prompt: str = "") -> str:
     x_field = validate_identifier(spec.group_by or spec.x_field)
     where_clause = _analytics_where_clause(prompt)
+    if x_field == "date" and _uses_weekly_grouping(prompt):
+        y_field = validate_identifier(spec.y_field or "rating")
+        expression = "AVG" if spec.aggregation == "avg" else "SUM"
+        return (
+            f"SELECT MIN(date) AS date, {expression}(CAST({y_field} AS REAL)) AS value "
+            f"FROM {table}{where_clause} "
+            "GROUP BY strftime('%Y-%W', date) ORDER BY MIN(date)"
+        )
     if spec.aggregation == "count":
-        return f"SELECT {x_field}, COUNT(*) AS value FROM {table}{where_clause} GROUP BY {x_field} ORDER BY {x_field}"
+        order = "value DESC, " + x_field if spec.chart_type == "pie" else x_field
+        return f"SELECT {x_field}, COUNT(*) AS value FROM {table}{where_clause} GROUP BY {x_field} ORDER BY {order}"
     y_field = validate_identifier(spec.y_field or "rating")
     expression = "AVG" if spec.aggregation == "avg" else "SUM"
     return f"SELECT {x_field}, {expression}(CAST({y_field} AS REAL)) AS value FROM {table}{where_clause} GROUP BY {x_field} ORDER BY {x_field}"
@@ -144,7 +153,73 @@ def _analytics_date_clause(prompt: str) -> str:
     on_match = re.search(rf"\bon\s+({date_pattern})\b", prompt, flags=re.IGNORECASE)
     if on_match:
         return f"date = '{on_match.group(1)}'"
+    quarter_match = re.search(r"\b(?:first quarter|q1)\s+(?:of\s+)?(?:the\s+year\s+)?(\d{4})\b", prompt, flags=re.IGNORECASE)
+    if quarter_match:
+        year = quarter_match.group(1)
+        return f"date >= '{year}-01-01' AND date <= '{year}-03-31'"
+    month_range = _month_year_range(prompt)
+    if month_range:
+        start, end = month_range
+        return f"date >= '{start}' AND date <= '{end}'"
     return ""
+
+
+def _month_year_range(prompt: str) -> tuple[str, str] | None:
+    month_names = {
+        "january": 1,
+        "february": 2,
+        "march": 3,
+        "april": 4,
+        "may": 5,
+        "june": 6,
+        "july": 7,
+        "august": 8,
+        "september": 9,
+        "october": 10,
+        "november": 11,
+        "december": 12,
+        "janvier": 1,
+        "fevrier": 2,
+        "février": 2,
+        "mars": 3,
+        "avril": 4,
+        "mai": 5,
+        "juin": 6,
+        "juillet": 7,
+        "aout": 8,
+        "août": 8,
+        "septembre": 9,
+        "octobre": 10,
+        "novembre": 11,
+        "decembre": 12,
+        "décembre": 12,
+    }
+    lower = prompt.lower()
+    year_match = re.search(r"\b(20\d{2}|19\d{2})\b", lower)
+    if not year_match:
+        return None
+    year = int(year_match.group(1))
+    month = None
+    for name, number in month_names.items():
+        if re.search(rf"\b{re.escape(name)}\b", lower):
+            month = number
+            break
+    if month is None:
+        return None
+    month_lengths = {1: 31, 2: 29 if _is_leap_year(year) else 28, 3: 31, 4: 30, 5: 31, 6: 30, 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31}
+    return f"{year:04d}-{month:02d}-01", f"{year:04d}-{month:02d}-{month_lengths[month]:02d}"
+
+
+def _is_leap_year(year: int) -> bool:
+    return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+
+
+def _uses_weekly_grouping(prompt: str) -> bool:
+    lower = prompt.lower()
+    return bool(
+        re.search(r"\b(?:first quarter|q1)\b", lower)
+        or any(term in lower for term in ("weekly", "by week", "week by week"))
+    )
 
 def _chart_spec_prompt(prompt: str) -> str:
     return (
@@ -211,19 +286,19 @@ def _policy_spec(prompt: str) -> ChartSpec | None:
     lower = prompt.lower()
     explicit_chart = _requested_supported_chart_type(lower)
     if explicit_chart:
-        return _spec_for_explicit_chart(lower, explicit_chart)
+        return _spec_for_explicit_chart(lower, explicit_chart, prompt)
     if _mentions_rating_distribution(lower):
         return _rating_distribution_spec("bar")
     if _mentions_time_trend(lower):
-        return _date_trend_spec("line")
+        return _date_trend_spec("line", prompt)
     if _mentions_share_request(lower) and _mentions_country(lower):
         return _country_share_spec("pie")
     return None
 
 
-def _spec_for_explicit_chart(lower_prompt: str, chart_type: str) -> ChartSpec:
+def _spec_for_explicit_chart(lower_prompt: str, chart_type: str, prompt: str = "") -> ChartSpec:
     if _mentions_time_trend(lower_prompt):
-        return _date_trend_spec(chart_type)
+        return _date_trend_spec(chart_type, prompt)
     if _mentions_country(lower_prompt):
         return _country_share_spec(chart_type)
     return _rating_distribution_spec(chart_type)
@@ -243,7 +318,21 @@ def _rating_distribution_spec(chart_type: str) -> ChartSpec:
     )
 
 
-def _date_trend_spec(chart_type: str) -> ChartSpec:
+def _date_trend_spec(chart_type: str, prompt: str = "") -> ChartSpec:
+    if _is_french_prompt(prompt):
+        return ChartSpec.from_mapping(
+            {
+                "chart_type": chart_type,
+                "x_field": "date",
+                "y_field": "rating",
+                "aggregation": "avg",
+                "group_by": "date",
+                "title": "Note moyenne au fil du temps",
+                "x_label": "Date",
+                "y_label": "Note moyenne",
+                "language": "fr",
+            }
+        )
     return ChartSpec.from_mapping(
         {
             "chart_type": chart_type,
@@ -366,8 +455,9 @@ def _mentions_rating_distribution(prompt_lower: str) -> bool:
 
 def _mentions_time_trend(prompt_lower: str) -> bool:
     return bool(
-        any(word in prompt_lower for word in ("trend", "over time", "timeline", "time series", "by month", "monthly"))
+        any(word in prompt_lower for word in ("trend", "over time", "timeline", "time series", "by month", "monthly", "change", "vary", "varies", "varient", "varie"))
         or (re.search(r"\bdate\b", prompt_lower) and any(word in prompt_lower for word in ("average", "avg", "by", "trend")))
+        or ("notes" in prompt_lower and re.search(r"\b(?:janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre)\b", prompt_lower))
     )
 
 
@@ -377,3 +467,8 @@ def _mentions_share_request(prompt_lower: str) -> bool:
 
 def _mentions_country(prompt_lower: str) -> bool:
     return bool(re.search(r"\bcountr(?:y|ies)\b", prompt_lower))
+
+
+def _is_french_prompt(prompt: str) -> bool:
+    lower = prompt.lower()
+    return bool(re.search(r"\b(?:montrez|notes|juillet|janvier|février|fevrier|mars|avril|juin|août|aout|septembre|octobre|novembre|décembre|decembre)\b", lower))

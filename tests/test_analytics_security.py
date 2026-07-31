@@ -1,6 +1,8 @@
 from pathlib import Path
 
 from llm_review_analysis.agents import AnalyticsAgent
+from llm_review_analysis.agents.analytics_agent import build_aggregate_sql
+from llm_review_analysis.analytics import ChartSpec
 from llm_review_analysis.llm import LLMResponse
 
 
@@ -40,6 +42,44 @@ def test_date_trend_uses_line_chart(settings, provider, sample_db):
     assert result["type"] == "chart"
     assert result["chart_type"] == "line"
     assert result["group_by"] == "date"
+    assert Path(result["path"]).exists()
+
+
+def test_first_quarter_prompt_uses_weekly_date_grouping():
+    spec = ChartSpec.from_mapping(
+        {
+            "chart_type": "line",
+            "x_field": "date",
+            "y_field": "rating",
+            "aggregation": "avg",
+            "group_by": "date",
+        }
+    )
+
+    sql = build_aggregate_sql(
+        "sample_product",
+        spec,
+        prompt="Show me the change in ratings for the first quarter of the year 2024 for the Samsung S23",
+    )
+
+    assert "date >= '2024-01-01' AND date <= '2024-03-31'" in sql
+    assert "GROUP BY strftime('%Y-%W', date)" in sql
+    assert "ORDER BY MIN(date)" in sql
+
+
+def test_french_month_prompt_uses_french_line_chart(settings, provider, sample_db):
+    conn, table = sample_db
+
+    result = AnalyticsAgent(settings, provider).run(
+        conn,
+        table,
+        "Montrez-moi comment les notes varient au mois de juillet 2025 pour Samsung S23.",
+    )
+
+    assert result["type"] == "chart"
+    assert result["chart_type"] == "line"
+    assert result["group_by"] == "date"
+    assert result["chart_rows"] == [{"label": "2025-07-01", "value": 5.0}, {"label": "2025-07-02", "value": 2.0}]
     assert Path(result["path"]).exists()
 
 

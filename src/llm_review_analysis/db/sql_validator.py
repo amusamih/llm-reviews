@@ -55,6 +55,7 @@ SQL_KEYWORDS = {
     "null",
     "or",
     "order",
+    "real",
     "round",
     "select",
     "strftime",
@@ -108,9 +109,9 @@ def validate_select_sql(
     if forbidden:
         raise SQLValidationError(f"Forbidden SQL keyword(s): {', '.join(sorted(forbidden))}")
 
-    allowed_table_set = {validate_identifier(table) for table in allowed_tables}
-    allowed_column_set = set(allowed_columns)
-    table_refs = {match.group(1) for match in FROM_JOIN_RE.finditer(cleaned)}
+    allowed_table_set = {validate_identifier(table).lower() for table in allowed_tables}
+    allowed_column_set = {column.lower() for column in allowed_columns}
+    table_refs = {match.group(1).lower() for match in FROM_JOIN_RE.finditer(cleaned)}
     if not table_refs:
         raise SQLValidationError("SELECT must reference an allowed table")
     unknown_tables = table_refs.difference(allowed_table_set)

@@ -147,6 +147,27 @@ def test_unknown_route_returns_controlled_fallback(settings, sample_db):
     assert trace["sql"] is None
 
 
+def test_explicit_percentage_country_prompt_routes_to_analytics_by_policy(settings, sample_db):
+    conn, _ = sample_db
+    prompt = "Show the percentage of reviews from each country for sample product."
+    language = RecordingLanguageAgent(language="en", translation=prompt)
+    provider = RecordingRouteProvider("DIRECT_SQL")
+    analytics = RecordingAnalyticsAgent()
+    orchestrator = ReviewOrchestrator(
+        settings,
+        provider,
+        language_agent=language,
+        analytics_agent=analytics,
+    )
+
+    result, trace = orchestrator.answer_with_trace(conn, prompt)
+
+    assert result["type"] == "chart"
+    assert trace["route"] == "ANALYTICS"
+    assert analytics.calls == [("sample_product", prompt)]
+    assert provider.route_user_requests == []
+
+
 class RecordingLanguageAgent:
     def __init__(self, *, language: str, translation: str) -> None:
         self.language = language

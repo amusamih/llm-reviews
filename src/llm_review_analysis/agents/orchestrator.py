@@ -168,6 +168,9 @@ class ReviewOrchestrator:
         return PromptMetadata(product_name=product, date_range=date_range)
 
     def route(self, prompt: str) -> str:
+        policy_decision = _policy_route_decision(prompt)
+        if policy_decision:
+            return policy_decision
         response = self.provider.generate(_route_prompt(prompt), purpose="route").content.strip()
         decision = _extract_route_decision(response)
         if decision:
@@ -1145,6 +1148,33 @@ def _extract_date_range(prompt: str) -> str | None:
 def _date_where_clause(prompt: str) -> str:
     body = _date_where_clause_body(prompt)
     return f" WHERE {body}" if body else ""
+
+
+def _policy_route_decision(prompt: str) -> str | None:
+    lower = prompt.lower()
+    explicit_analytics_terms = (
+        "chart",
+        "plot",
+        "visual",
+        "visualize",
+        "graph",
+        "trend",
+        "timeline",
+        "time series",
+        "percentage",
+        "percent",
+        "share",
+        "distribution",
+        "fluctuation",
+        "fluctuations",
+        "vary",
+        "varies",
+    )
+    if any(term in lower for term in explicit_analytics_terms):
+        return "ANALYTICS"
+    if "show" in lower and any(term in lower for term in ("rating", "ratings", "country", "countries", "date", "month", "quarter")):
+        return "ANALYTICS"
+    return None
 
 
 def _route_prompt(prompt: str) -> str:

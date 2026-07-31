@@ -11,6 +11,14 @@ def test_valid_select_allowed():
     assert sql == "SELECT COUNT(*) AS n FROM sample_product"
 
 
+def test_mixed_case_allowed_table_validates_case_insensitively():
+    sql = validate_select_sql(
+        "SELECT country, COUNT(*) AS value FROM EV_charger GROUP BY country ORDER BY value DESC, country",
+        allowed_tables=["EV_charger"],
+    )
+    assert sql == "SELECT country, COUNT(*) AS value FROM EV_charger GROUP BY country ORDER BY value DESC, country"
+
+
 @pytest.mark.parametrize(
     "sql",
     [
